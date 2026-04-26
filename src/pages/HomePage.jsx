@@ -848,6 +848,10 @@ function HomePage({ stats, teams, onNavigate }) {
         </p>
         <nav className="home-seo-links" aria-label="Guías de la app">
           <a href="/como-usar">Cómo usar</a>
+          <a href="/todos-los-cromos-mundial-2026">Todos los cromos</a>
+          <a href="/lista-estampitas-mundial-2026">Lista de estampitas</a>
+          <a href="/figuritas-mundial-2026">Figuritas</a>
+          <a href="/stickers-mundial-2026">Stickers</a>
           <a href="/checklist-album-mundial-2026">Checklist</a>
           <a href="/faltantes-estampitas-mundial-2026">Faltantes</a>
           <a href="/repetidas-estampitas-mundial-2026">Repetidas</a>

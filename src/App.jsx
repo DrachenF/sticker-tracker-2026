@@ -168,6 +168,63 @@ const infoPages = {
       { href: '/album-mundial-2026-guatemala', text: 'Álbum en Guatemala' },
     ],
   },
+  '/todos-los-cromos-mundial-2026': {
+    label: 'Cromos 2026',
+    title: 'Todos los cromos del Mundial 2026',
+    body: [
+      'Mi Álbum 2026 es una herramienta no oficial para controlar tu colección del Mundial 2026. Puedes usarla para marcar las estampitas que ya tienes, ver tus faltantes, registrar repetidas, marcar pegadas y llevar el progreso de tu álbum desde el celular.',
+      'En algunos países se les llama cromos, en otros figuritas, estampitas, láminas o stickers. La app funciona como checklist digital para organizar tu colección sin importar cómo les llames.',
+      'No ofrecemos material oficial ni imágenes protegidas. Esta es una herramienta de organización para coleccionistas.',
+    ],
+    download: {
+      href: '/downloads/mi-album-2026-checklist-no-oficial.pdf',
+      text: 'Descargar checklist PDF',
+    },
+    links: [
+      { href: '/', text: 'Usar checklist digital' },
+      { href: '/album-mundial-2026-guatemala', text: 'Comprar en Guatemala' },
+      { href: '/lista-estampitas-mundial-2026', text: 'Lista de estampitas' },
+      { href: '/figuritas-mundial-2026', text: 'Figuritas' },
+      { href: '/stickers-mundial-2026', text: 'Stickers' },
+    ],
+    description: 'Checklist digital no oficial para todos los cromos del Mundial 2026.',
+  },
+  '/lista-estampitas-mundial-2026': {
+    label: 'Estampitas',
+    title: 'Lista de estampitas del Mundial 2026',
+    body: [
+      'Usa Mi Álbum 2026 como lista digital no oficial para controlar tus estampitas, faltantes, repetidas y pegadas. Esta herramienta está pensada para coleccionistas que quieren organizar su álbum desde el celular.',
+    ],
+    links: [
+      { href: '/todos-los-cromos-mundial-2026', text: 'Todos los cromos' },
+      { href: '/', text: 'Usar checklist digital' },
+    ],
+    description: 'Lista de estampitas del Mundial 2026 en formato digital no oficial.',
+  },
+  '/figuritas-mundial-2026': {
+    label: 'Figuritas',
+    title: 'Figuritas del Mundial 2026',
+    body: [
+      'Si en tu país les llamas figuritas, puedes usar Mi Álbum 2026 para llevar un control digital no oficial de tu colección: figuritas que tienes, faltantes, repetidas y pegadas.',
+    ],
+    links: [
+      { href: '/todos-los-cromos-mundial-2026', text: 'Todos los cromos' },
+      { href: '/', text: 'Usar checklist digital' },
+    ],
+    description: 'Control de figuritas del Mundial 2026 con herramienta digital no oficial.',
+  },
+  '/stickers-mundial-2026': {
+    label: 'Stickers',
+    title: 'Stickers del Mundial 2026',
+    body: [
+      'Controla tus stickers del Mundial 2026 con una herramienta digital no oficial. Marca los que tienes, revisa faltantes, registra repetidas y guarda tu progreso.',
+    ],
+    links: [
+      { href: '/todos-los-cromos-mundial-2026', text: 'Todos los cromos' },
+      { href: '/', text: 'Usar checklist digital' },
+    ],
+    description: 'Checklist digital no oficial para stickers del Mundial 2026.',
+  },
 }
 
 function normalizePathname(pathname) {
@@ -179,6 +236,39 @@ function normalizePathname(pathname) {
 }
 
 function InfoPage({ page }) {
+  useEffect(() => {
+    const previousTitle = document.title
+    const existingMeta = document.querySelector('meta[name="description"]')
+    const previousDescription = existingMeta?.getAttribute('content') || ''
+
+    document.title = `${page.title} | Mi Álbum 2026`
+
+    const nextDescription =
+      page.description ||
+      page.body?.[0] ||
+      'Mi Álbum 2026, herramienta no oficial para coleccionistas.'
+
+    let metaDescription = existingMeta
+    if (!metaDescription) {
+      metaDescription = document.createElement('meta')
+      metaDescription.setAttribute('name', 'description')
+      document.head.appendChild(metaDescription)
+    }
+
+    metaDescription.setAttribute('content', nextDescription)
+
+    return () => {
+      document.title = previousTitle
+      if (metaDescription) {
+        if (previousDescription) {
+          metaDescription.setAttribute('content', previousDescription)
+        } else if (!existingMeta) {
+          metaDescription.remove()
+        }
+      }
+    }
+  }, [page])
+
   return (
     <main className="info-page-shell">
       <article className="info-page-card">

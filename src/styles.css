@@ -2317,30 +2317,34 @@ a {
 
 .home-shop-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(124px, auto);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
-  padding: 10px 12px;
-  border-radius: 16px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  min-height: 78px;
+  max-height: 100px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(239, 246, 255, 0.88)),
     color-mix(in srgb, #9edfe3 12%, white);
   border: 1px solid rgba(14, 165, 233, 0.18);
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .home-shop-copy {
   min-width: 0;
   display: grid;
-  gap: 2px;
+  gap: 4px;
 }
 
 .home-shop-country {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.64rem;
+  font-size: 0.67rem;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .home-shop-country img {
@@ -2352,19 +2356,18 @@ a {
   box-shadow: 0 2px 5px rgba(15, 23, 42, 0.08);
 }
 
-.home-shop-copy h3 {
+.home-shop-copy span,
+.home-shop-line {
   margin: 0;
-  color: var(--text-main);
-  font-size: 0.83rem;
+  color: var(--text-secondary);
+  font-size: 0.64rem;
   line-height: 1.08;
 }
 
-.home-shop-copy p,
-.home-shop-copy span {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.66rem;
-  line-height: 1.2;
+.home-shop-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .home-shop-copy span {
@@ -2374,13 +2377,19 @@ a {
 
 .home-shop-links {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.home-shop-links::-webkit-scrollbar {
+  display: none;
 }
 
 .home-shop-links a {
-  min-height: 28px;
-  padding: 5px 9px;
+  min-height: 23px;
+  padding: 3px 8px;
   display: inline-grid;
   place-items: center;
   border-radius: 999px;
@@ -2388,25 +2397,28 @@ a {
   background: #eff6ff;
   color: #1d4ed8;
   text-decoration: none;
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 900;
   line-height: 1;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .home-shop-button {
-  min-height: 34px;
+  min-height: 30px;
   display: inline-grid;
   place-items: center;
-  padding: 8px 10px;
+  padding: 7px 11px;
   border-radius: 999px;
   background: linear-gradient(180deg, #2563eb, #1d4ed8);
   color: #ffffff;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 900;
-  line-height: 1.05;
+  line-height: 1;
   text-align: center;
   text-decoration: none;
   box-shadow: 0 8px 16px rgba(37, 99, 235, 0.16);
+  white-space: nowrap;
 }
 
 .home-seo-note {
@@ -2477,18 +2489,18 @@ a {
   }
 
   .home-shop-card {
-    grid-template-columns: minmax(0, 1fr) 104px;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     padding: 8px 9px;
     border-radius: 14px;
-    min-height: 76px;
+    min-height: 72px;
+    max-height: 96px;
   }
 
   .home-shop-button {
-    width: auto;
-    min-height: 32px;
-    padding: 7px 8px;
-    font-size: 0.62rem;
+    min-height: 28px;
+    padding: 6px 10px;
+    font-size: 0.6rem;
   }
 
   .home-shop-country {
@@ -2502,25 +2514,9 @@ a {
     height: 12px;
   }
 
-  .home-shop-copy h3 {
-    max-width: 100%;
-    display: -webkit-box;
-    overflow: hidden;
-    line-clamp: 2;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    font-size: 0.76rem;
-    line-height: 1.08;
-  }
-
-  .home-shop-copy p {
-    display: -webkit-box;
-    overflow: hidden;
-    font-size: 0.6rem;
-    line-height: 1.15;
-    line-clamp: 2;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+  .home-shop-line {
+    font-size: 0.58rem;
+    line-height: 1.05;
   }
 
   .progress-card-top,

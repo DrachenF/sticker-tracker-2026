@@ -523,23 +523,21 @@ function HomePage({ stats, teams, onNavigate }) {
         <div className="home-shop-copy">
           <p className="quick-label home-shop-country">
             <img src="https://flagcdn.com/gt.svg" alt="" aria-hidden="true" />
-            <span>Disponible para Guatemala</span>
+            <span>Guatemala · Sobres desde Q9.50</span>
           </p>
-          <h3>¿Te faltan sobres, álbumes o estampitas?</h3>
-          <p>Escríbenos por WhatsApp y consulta disponibilidad.</p>
+          <p className="home-shop-line">Caja 104 sobres Q950 · Álbum desde Q30</p>
           <nav className="home-shop-links" aria-label="Páginas comerciales en Guatemala">
             <a href="/precio-album-mundial-2026-guatemala">Ver precios</a>
             <a href="/sobres-mundial-2026-guatemala">Comprar sobres</a>
-            <a href="/album-mundial-2026-guatemala">Álbum en Guatemala</a>
           </nav>
         </div>
         <a
           className="home-shop-button"
-          href="https://wa.me/50258714824?text=Hola%2C%20estoy%20interesado%20en%20conseguir%20album%20y%20estampitas%20en%20Guatemala."
+          href="https://wa.me/50258714824?text=Hola%2C%20quiero%20consultar%20disponibilidad%20de%20album%2C%20sobres%20o%20estampitas%20del%20Mundial%202026%20en%20Guatemala."
           target="_blank"
           rel="noopener noreferrer"
         >
-          Escribir por WhatsApp
+          WhatsApp
         </a>
       </section>
 

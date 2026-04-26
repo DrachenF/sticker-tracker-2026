@@ -95,6 +95,79 @@ const infoPages = {
       { href: '/checklist-album-mundial-2026', text: 'Checklist digital' },
     ],
   },
+  '/precio-album-mundial-2026-guatemala': {
+    label: 'Precios Guatemala',
+    title: 'Precio del álbum Mundial 2026 en Guatemala',
+    body: [
+      'Consulta precios publicados en nuestra página para álbumes, sobres y cajas del Mundial 2026 en Guatemala.',
+      'Vendemos producto físico original para coleccionistas. Los precios están sujetos a disponibilidad.',
+    ],
+    priceCards: [
+      { label: 'Sobre individual', value: 'Q9.50' },
+      { label: 'Caja de 104 sobres', value: 'Q950', note: 'Precio de oferta' },
+      { label: 'Álbum pasta suave', value: 'Q30' },
+      { label: 'Álbum pasta dura', value: 'Q150' },
+    ],
+    highlight:
+      'La caja incluye 104 sobres. Comprando 104 sobres individuales pagarías Q988; con la oferta de caja pagas Q950 y ahorras Q38.',
+    whatsapp: {
+      href: 'https://wa.me/50258714824?text=Hola%2C%20quiero%20consultar%20precios%20del%20album%2C%20sobres%20y%20caja%20del%20Mundial%202026%20en%20Guatemala.',
+      text: 'Consultar precios por WhatsApp',
+    },
+    legalNotice:
+      'Mi Álbum 2026 es una herramienta y página de venta no afiliada ni patrocinada por FIFA, Panini ni ninguna entidad oficial. Las marcas mencionadas pertenecen a sus respectivos propietarios.',
+    links: [
+      { href: '/sobres-mundial-2026-guatemala', text: 'Ver sobres y cajas' },
+      { href: '/album-mundial-2026-guatemala', text: 'Álbum en Guatemala' },
+    ],
+  },
+  '/album-mundial-2026-guatemala': {
+    label: 'Venta Guatemala',
+    title: 'Álbum Mundial 2026 en Guatemala',
+    body: [
+      'Compra álbumes, sobres y cajas del Mundial 2026 en Guatemala.',
+      'Consulta disponibilidad por WhatsApp. También puedes usar Mi Álbum 2026 como herramienta digital no oficial para controlar tus estampitas, faltantes, repetidas y pegadas.',
+    ],
+    priceCards: [
+      { label: 'Sobre', value: 'Q9.50' },
+      { label: 'Caja de 104 sobres', value: 'Q950' },
+      { label: 'Álbum pasta suave', value: 'Q30' },
+      { label: 'Álbum pasta dura', value: 'Q150' },
+    ],
+    whatsapp: {
+      href: 'https://wa.me/50258714824?text=Hola%2C%20quiero%20comprar%20album%2C%20sobres%20o%20caja%20del%20Mundial%202026%20en%20Guatemala.',
+      text: 'Comprar por WhatsApp',
+    },
+    legalNotice:
+      'Mi Álbum 2026 es una herramienta y página de venta no afiliada ni patrocinada por FIFA, Panini ni ninguna entidad oficial. Las marcas mencionadas pertenecen a sus respectivos propietarios.',
+    links: [
+      { href: '/precio-album-mundial-2026-guatemala', text: 'Ver precios' },
+      { href: '/sobres-mundial-2026-guatemala', text: 'Comprar sobres' },
+    ],
+  },
+  '/sobres-mundial-2026-guatemala': {
+    label: 'Sobres Guatemala',
+    title: 'Sobres del Mundial 2026 en Guatemala',
+    body: [
+      'Consulta disponibilidad de sobres y cajas del Mundial 2026 en Guatemala.',
+    ],
+    priceCards: [
+      { label: 'Sobre individual', value: 'Q9.50' },
+      { label: 'Caja de 104 sobres', value: 'Q950', note: 'Oferta' },
+      { label: 'Precio efectivo aproximado por sobre en caja', value: 'Q9.13' },
+      { label: 'Ahorro aproximado vs 104 sobres individuales', value: 'Q38' },
+    ],
+    whatsapp: {
+      href: 'https://wa.me/50258714824?text=Hola%2C%20quiero%20consultar%20sobres%20y%20cajas%20del%20Mundial%202026%20en%20Guatemala.',
+      text: 'Consultar sobres por WhatsApp',
+    },
+    legalNotice:
+      'Mi Álbum 2026 es una herramienta y página de venta no afiliada ni patrocinada por FIFA, Panini ni ninguna entidad oficial. Las marcas mencionadas pertenecen a sus respectivos propietarios.',
+    links: [
+      { href: '/precio-album-mundial-2026-guatemala', text: 'Ver precios' },
+      { href: '/album-mundial-2026-guatemala', text: 'Álbum en Guatemala' },
+    ],
+  },
 }
 
 function normalizePathname(pathname) {
@@ -116,12 +189,35 @@ function InfoPage({ page }) {
             <p key={paragraph}>{paragraph}</p>
           ))}
         </div>
+        {Array.isArray(page.priceCards) && page.priceCards.length ? (
+          <section className="info-price-grid" aria-label="Resumen de precios">
+            {page.priceCards.map((item) => (
+              <article key={`${item.label}-${item.value}`} className="info-price-card">
+                <p>{item.label}</p>
+                <strong>{item.value}</strong>
+                {item.note ? <span>{item.note}</span> : null}
+              </article>
+            ))}
+          </section>
+        ) : null}
+        {page.highlight ? (
+          <p className="info-price-highlight">{page.highlight}</p>
+        ) : null}
         <p className="info-page-notice">
-          Mi Álbum 2026 es una herramienta no oficial. No está afiliada,
-          patrocinada ni respaldada por FIFA, Panini ni ninguna entidad oficial.
-          Las marcas mencionadas pertenecen a sus respectivos propietarios.
+          {page.legalNotice ||
+            'Mi Álbum 2026 es una herramienta no oficial. No está afiliada, patrocinada ni respaldada por FIFA, Panini ni ninguna entidad oficial. Las marcas mencionadas pertenecen a sus respectivos propietarios.'}
         </p>
         <div className="info-page-actions">
+          {page.whatsapp ? (
+            <a
+              className="info-page-button"
+              href={page.whatsapp.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {page.whatsapp.text}
+            </a>
+          ) : null}
           {page.download ? (
             <a className="info-page-button" href={page.download.href} download>
               {page.download.text}

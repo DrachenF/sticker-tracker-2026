@@ -527,6 +527,11 @@ function HomePage({ stats, teams, onNavigate }) {
           </p>
           <h3>¿Te faltan sobres, álbumes o estampitas?</h3>
           <p>Escríbenos por WhatsApp y consulta disponibilidad.</p>
+          <nav className="home-shop-links" aria-label="Páginas comerciales en Guatemala">
+            <a href="/precio-album-mundial-2026-guatemala">Ver precios</a>
+            <a href="/sobres-mundial-2026-guatemala">Comprar sobres</a>
+            <a href="/album-mundial-2026-guatemala">Álbum en Guatemala</a>
+          </nav>
         </div>
         <a
           className="home-shop-button"

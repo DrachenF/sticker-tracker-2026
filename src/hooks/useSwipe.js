@@ -23,7 +23,7 @@ export function useSwipe({ onSwipeLeft, onSwipeRight, threshold = 40 }) {
     const distanceX = touchStartX.current - touchEndX.current
     const distanceY = touchStartY.current - touchEndY.current
     
-    // Asegurar que el deslizamiento fue principalmente horizontal (no un scroll vertical rapido o en diagonal)
+    // Asegurar que el deslizamiento fue principalmente horizontal (no un scroll vertical rápido o en diagonal)
     const isHorizontalSwipe = Math.abs(distanceX) > Math.abs(distanceY) * 1.5
 
     if (isHorizontalSwipe) {

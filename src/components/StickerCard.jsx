@@ -21,7 +21,7 @@ function formatStickerName(name) {
 
   return name
     .replace(/official\s+/gi, '')
-    .replace(/panini logo/gi, 'Intro del album')
+    .replace(/panini logo/gi, 'Intro del álbum')
 }
 
 function PasteIcon({ isPasted }) {
@@ -255,7 +255,7 @@ function StickerCard({
           className={`toggle-owned ${owned ? '' : 'is-off'}`}
           onClick={() => onToggleOwned(sticker.code)}
         >
-          {owned ? 'Ya la tengo' : 'Anadir al album'}
+          {owned ? 'Ya la tengo' : 'Añadir al álbum'}
         </button>
 
         <div className="duplicates-stepper" aria-label={`Repetidas de ${sticker.code}`}>

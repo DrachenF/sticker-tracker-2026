@@ -16,7 +16,7 @@ function SettingsPage({
         </div>
         <div>
           <p className="page-label">Ajustes</p>
-          <h2>Tu album, a salvo</h2>
+          <h2>Tu álbum, a salvo</h2>
           <p className="page-description">
             Guarda tu progreso, portada y banderas en un respaldo privado de la app.
           </p>
@@ -35,8 +35,8 @@ function SettingsPage({
         <div className="settings-action-row">
           <div className="settings-note">
             {isSoundEnabled
-              ? 'Los sonidos suaves estan activados.'
-              : 'La app esta en silencio.'}
+              ? 'Los sonidos suaves están activados.'
+              : 'La app está en silencio.'}
           </div>
           <button
             type="button"
@@ -61,8 +61,8 @@ function SettingsPage({
         </div>
 
         <p className="settings-note settings-note-plain">
-          El archivo .albu incluye estampitas, repetidas, pegadas, color del album
-          y posicion de banderas.
+          El archivo .albu incluye estampitas, repetidas, pegadas, color del álbum
+          y posición de banderas.
         </p>
 
         <div className="settings-actions settings-actions-large">
@@ -94,7 +94,7 @@ function SettingsPage({
         <div className="settings-card-header">
           <span className="settings-card-icon is-reset" aria-hidden="true" />
           <div>
-            <p className="page-label">Coleccion</p>
+            <p className="page-label">Colección</p>
             <h3>Reiniciar progreso guardado</h3>
           </div>
         </div>
@@ -108,7 +108,7 @@ function SettingsPage({
             className="action-button button-reset"
             onClick={onResetCollection}
           >
-            Reiniciar coleccion
+            Reiniciar colección
           </button>
         </div>
       </section>

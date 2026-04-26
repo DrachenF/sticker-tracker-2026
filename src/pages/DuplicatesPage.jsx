@@ -160,7 +160,7 @@ function DuplicatesPage({
             type="button"
             className="album-close-button"
             onClick={onCloseSection}
-            aria-label="Cerrar seccion"
+            aria-label="Cerrar sección"
           >
             X
           </button>
@@ -273,8 +273,8 @@ function DuplicatesPage({
             })
           ) : (
             <section className="empty-state">
-              <h3>Aun no registras repetidas.</h3>
-              <p>Usa el album para sumar copias extra de cada estampita.</p>
+              <h3>Aún no registras repetidas.</h3>
+              <p>Usa el álbum para sumar copias extra de cada estampita.</p>
             </section>
           )}
         </div>

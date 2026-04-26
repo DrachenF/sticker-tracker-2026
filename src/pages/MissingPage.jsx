@@ -155,7 +155,7 @@ function MissingPage({
             type="button"
             className="album-close-button"
             onClick={onCloseSection}
-            aria-label="Cerrar seccion"
+            aria-label="Cerrar sección"
           >
             X
           </button>
@@ -265,7 +265,7 @@ function MissingPage({
           ) : (
             <section className="empty-state">
               <h3>No tienes faltantes.</h3>
-              <p>Tu album base aparece completo segun el progreso guardado.</p>
+              <p>Tu álbum base aparece completo según el progreso guardado.</p>
             </section>
           )}
         </div>

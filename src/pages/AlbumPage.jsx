@@ -270,7 +270,7 @@ function AlbumPage({
             type="button"
             className="album-close-button"
             onClick={onCloseSection}
-            aria-label="Cerrar seccion"
+            aria-label="Cerrar sección"
           >
             X
           </button>
@@ -325,7 +325,7 @@ function AlbumPage({
         <div className="album-progress-card">
           <div className="album-progress-top">
             <div>
-              <p className="page-label">Tu album base</p>
+              <p className="page-label">Tu álbum base</p>
               <h2>
                 {stats.owned} / {stats.total} registradas
               </h2>
@@ -341,7 +341,7 @@ function AlbumPage({
         </div>
 
         <div className="album-index-title">
-          <strong>Indice del album</strong>
+          <strong>Índice del álbum</strong>
           <em>{filteredSections.length} secciones</em>
         </div>
 
@@ -397,7 +397,7 @@ function AlbumPage({
           ) : (
             <section className="empty-state">
               <h3>No encontramos secciones con ese filtro.</h3>
-              <p>Prueba con otro codigo, nombre, equipo o tipo.</p>
+              <p>Prueba con otro código, nombre, equipo o tipo.</p>
             </section>
           )}
         </div>
@@ -431,7 +431,7 @@ function AlbumPage({
             ) : (
               <section className="empty-state">
                 <h3>No encontramos estampitas.</h3>
-                <p>Prueba con otro codigo, nombre, equipo o tipo.</p>
+                <p>Prueba con otro código, nombre, equipo o tipo.</p>
               </section>
             )}
           </section>

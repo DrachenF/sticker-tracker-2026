@@ -23,7 +23,7 @@ const ALBUM_FILTER_KEY = 'sticker-tracker-album-filter'
 
 const tabs = [
   { id: 'home', label: 'Inicio' },
-  { id: 'album', label: 'Mi album' },
+  { id: 'album', label: 'Mi álbum' },
   { id: 'missing', label: 'Faltantes' },
   { id: 'duplicates', label: 'Repetidas' },
   { id: 'settings', label: 'Ajustes' },
@@ -31,7 +31,7 @@ const tabs = [
 
 const infoPages = {
   '/como-usar': {
-    label: 'Guia',
+    label: 'Guía',
     title: 'Cómo usar Mi Álbum 2026',
     body: [
       'Mi Álbum 2026 sirve para controlar estampitas desde el celular de forma simple y no oficial.',
@@ -221,7 +221,7 @@ function App() {
         setCollection(savedCollection)
       } catch (loadError) {
         if (isMounted) {
-          setError(loadError.message || 'Ocurrio un error al cargar la app.')
+          setError(loadError.message || 'Ocurrió un error al cargar la app.')
         }
       } finally {
         if (isMounted) {
@@ -655,7 +655,7 @@ function App() {
 
   const handleResetCollection = () => {
     const wasConfirmed = window.confirm(
-      'Se borrara tu progreso guardado. Quieres reiniciar la coleccion?',
+      'Se borrará tu progreso guardado. ¿Quieres reiniciar la colección?',
     )
 
     if (!wasConfirmed) {
@@ -664,7 +664,7 @@ function App() {
 
     resetCollectionState()
     setCollection({})
-    setToast('Coleccion reiniciada.')
+    setToast('Colección reiniciada.')
   }
 
   const pageProps = {
@@ -707,7 +707,7 @@ function App() {
         <section className="state-panel">
           <p className="state-kicker">Sticker Tracker 2026</p>
           <h1>Cargando checklist base...</h1>
-          <p>Preparando tu control personal de coleccion.</p>
+          <p>Preparando tu control personal de colección.</p>
         </section>
       )
     }

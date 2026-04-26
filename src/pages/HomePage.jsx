@@ -527,6 +527,11 @@ function HomePage({ stats, teams, onNavigate }) {
           </p>
           <h3>¿Te faltan sobres, álbumes o estampitas?</h3>
           <p>Escríbenos por WhatsApp y consulta disponibilidad.</p>
+          <nav className="home-shop-links" aria-label="Páginas comerciales en Guatemala">
+            <a href="/precio-album-mundial-2026-guatemala">Ver precios</a>
+            <a href="/sobres-mundial-2026-guatemala">Comprar sobres</a>
+            <a href="/album-mundial-2026-guatemala">Álbum en Guatemala</a>
+          </nav>
         </div>
         <a
           className="home-shop-button"
@@ -546,12 +551,12 @@ function HomePage({ stats, teams, onNavigate }) {
           style={{ '--book-color': bookColor }}
           onClick={openColorCustomizer}
           onKeyDown={handleBookCoverKeyDown}
-          aria-label="Editar color del album"
+          aria-label="Editar color del álbum"
         >
           <div className="book-spine" />
           <BookFlags flags={bookFlags} onFlagClick={openFlagCustomizer} />
           <div className="book-content">
-            <span className="book-subtitle">Mi album</span>
+            <span className="book-subtitle">Mi álbum</span>
             <span className="book-title">Mundial 2026</span>
             <button
               type="button"
@@ -589,10 +594,10 @@ function HomePage({ stats, teams, onNavigate }) {
       {activeCustomizer ? (
         <>
         <div className="modal-backdrop" onClick={() => setActiveCustomizer(null)} />
-        <section className="book-customizer" aria-label="Personalizar album">
+        <section className="book-customizer" aria-label="Personalizar álbum">
           <div className="book-customizer-head">
             <p className="quick-label">
-              {activeCustomizer === 'color' ? 'Color del album' : 'Banderas del album'}
+              {activeCustomizer === 'color' ? 'Color del álbum' : 'Banderas del álbum'}
             </p>
             <button
               type="button"
@@ -652,7 +657,7 @@ function HomePage({ stats, teams, onNavigate }) {
   onRemoveFlag={removeFlag}
 />
                   <div className="book-content">
-                    <span className="book-subtitle">Mi album</span>
+                    <span className="book-subtitle">Mi álbum</span>
                     <span className="book-title">Mundial 2026</span>
                     <span className="book-action">INICIAR</span>
                   </div>
@@ -840,11 +845,11 @@ function HomePage({ stats, teams, onNavigate }) {
       <section className="home-seo-note" aria-label="Informacion de Mi Album 2026">
         <p>
           Mi Álbum 2026 es una herramienta digital no oficial para controlar tu
-          coleccion de estampitas: marca las que tienes, faltantes, repetidas y
+          colección de estampitas: marca las que tienes, faltantes, repetidas y
           pegadas, comparte listas y guarda un respaldo privado de tu progreso.
         </p>
-        <nav className="home-seo-links" aria-label="Guias de la app">
-          <a href="/como-usar">Como usar</a>
+        <nav className="home-seo-links" aria-label="Guías de la app">
+          <a href="/como-usar">Cómo usar</a>
           <a href="/checklist-album-mundial-2026">Checklist</a>
           <a href="/faltantes-estampitas-mundial-2026">Faltantes</a>
           <a href="/repetidas-estampitas-mundial-2026">Repetidas</a>

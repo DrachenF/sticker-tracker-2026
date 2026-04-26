@@ -1,6 +1,6 @@
 export function buildMissingText(stickers) {
   if (!stickers.length) {
-    return 'No me faltan estampitas del album base.'
+    return 'No me faltan estampitas del álbum base.'
   }
 
   const grouped = {}

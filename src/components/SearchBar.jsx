@@ -18,7 +18,7 @@ function SearchBar({ searchValue, onSearchChange, activeFilter, onFilterChange }
           type="search"
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Codigo, equipo, jugador o tipo"
+          placeholder="Código, equipo, jugador o tipo"
         />
       </div>
 

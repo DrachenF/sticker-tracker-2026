@@ -523,18 +523,21 @@ function HomePage({ stats, teams, onNavigate }) {
         <div className="home-shop-copy">
           <p className="quick-label home-shop-country">
             <img src="https://flagcdn.com/gt.svg" alt="" aria-hidden="true" />
-            <span>Disponible para Guatemala</span>
+            <span>Guatemala · Sobres desde Q9.50</span>
           </p>
-          <h3>¿Te faltan sobres, álbumes o estampitas?</h3>
-          <p>Escríbenos por WhatsApp y consulta disponibilidad.</p>
+          <p className="home-shop-line">Caja 104 sobres Q950 · Álbum desde Q30</p>
+          <nav className="home-shop-links" aria-label="Páginas comerciales en Guatemala">
+            <a href="/precio-album-mundial-2026-guatemala">Ver precios</a>
+            <a href="/sobres-mundial-2026-guatemala">Comprar sobres</a>
+          </nav>
         </div>
         <a
           className="home-shop-button"
-          href="https://wa.me/50258714824?text=Hola%2C%20estoy%20interesado%20en%20conseguir%20album%20y%20estampitas%20en%20Guatemala."
+          href="https://wa.me/50258714824?text=Hola%2C%20quiero%20consultar%20disponibilidad%20de%20album%2C%20sobres%20o%20estampitas%20del%20Mundial%202026%20en%20Guatemala."
           target="_blank"
           rel="noopener noreferrer"
         >
-          Escribir por WhatsApp
+          WhatsApp
         </a>
       </section>
 
@@ -546,12 +549,12 @@ function HomePage({ stats, teams, onNavigate }) {
           style={{ '--book-color': bookColor }}
           onClick={openColorCustomizer}
           onKeyDown={handleBookCoverKeyDown}
-          aria-label="Editar color del album"
+          aria-label="Editar color del álbum"
         >
           <div className="book-spine" />
           <BookFlags flags={bookFlags} onFlagClick={openFlagCustomizer} />
           <div className="book-content">
-            <span className="book-subtitle">Mi album</span>
+            <span className="book-subtitle">Mi álbum</span>
             <span className="book-title">Mundial 2026</span>
             <button
               type="button"
@@ -589,10 +592,10 @@ function HomePage({ stats, teams, onNavigate }) {
       {activeCustomizer ? (
         <>
         <div className="modal-backdrop" onClick={() => setActiveCustomizer(null)} />
-        <section className="book-customizer" aria-label="Personalizar album">
+        <section className="book-customizer" aria-label="Personalizar álbum">
           <div className="book-customizer-head">
             <p className="quick-label">
-              {activeCustomizer === 'color' ? 'Color del album' : 'Banderas del album'}
+              {activeCustomizer === 'color' ? 'Color del álbum' : 'Banderas del álbum'}
             </p>
             <button
               type="button"
@@ -652,7 +655,7 @@ function HomePage({ stats, teams, onNavigate }) {
   onRemoveFlag={removeFlag}
 />
                   <div className="book-content">
-                    <span className="book-subtitle">Mi album</span>
+                    <span className="book-subtitle">Mi álbum</span>
                     <span className="book-title">Mundial 2026</span>
                     <span className="book-action">INICIAR</span>
                   </div>
@@ -840,11 +843,15 @@ function HomePage({ stats, teams, onNavigate }) {
       <section className="home-seo-note" aria-label="Informacion de Mi Album 2026">
         <p>
           Mi Álbum 2026 es una herramienta digital no oficial para controlar tu
-          coleccion de estampitas: marca las que tienes, faltantes, repetidas y
+          colección de estampitas: marca las que tienes, faltantes, repetidas y
           pegadas, comparte listas y guarda un respaldo privado de tu progreso.
         </p>
-        <nav className="home-seo-links" aria-label="Guias de la app">
-          <a href="/como-usar">Como usar</a>
+        <nav className="home-seo-links" aria-label="Guías de la app">
+          <a href="/como-usar">Cómo usar</a>
+          <a href="/todos-los-cromos-mundial-2026">Todos los cromos</a>
+          <a href="/lista-estampitas-mundial-2026">Lista de estampitas</a>
+          <a href="/figuritas-mundial-2026">Figuritas</a>
+          <a href="/stickers-mundial-2026">Stickers</a>
           <a href="/checklist-album-mundial-2026">Checklist</a>
           <a href="/faltantes-estampitas-mundial-2026">Faltantes</a>
           <a href="/repetidas-estampitas-mundial-2026">Repetidas</a>

@@ -1,6 +1,12 @@
+const SHARE_INTRO = 'Llevo mi registro en https://mi-album-2026.vercel.app/'
+
+function withShareIntro(text) {
+  return `${SHARE_INTRO}\r\n\r\n${text}`
+}
+
 export function buildMissingText(stickers) {
   if (!stickers.length) {
-    return 'No me faltan estampitas del album base.'
+    return withShareIntro('No me faltan estampitas del álbum base.')
   }
 
   const grouped = {}
@@ -17,13 +23,13 @@ export function buildMissingText(stickers) {
     for (const [groupName, codes] of Object.entries(grouped)) {
       lines.push(`• ${groupName}: faltan ${codes.length}`)
     }
-    return lines.join('\r\n')
+    return withShareIntro(lines.join('\r\n'))
   }
 
   const groupNames = Object.keys(grouped)
   if (groupNames.length === 1) {
     const groupName = groupNames[0]
-    return `Me faltan *${groupName.toUpperCase()}*:\r\n${grouped[groupName].map(c => `- ${c}`).join('\r\n')}`
+    return withShareIntro(`Me faltan *${groupName.toUpperCase()}*:\r\n${grouped[groupName].map(c => `- ${c}`).join('\r\n')}`)
   }
 
   const lines = ['Me faltan:']
@@ -31,12 +37,12 @@ export function buildMissingText(stickers) {
     lines.push(`*${groupName.toUpperCase()}*:\r\n${codes.map(c => `- ${c}`).join('\r\n')}`)
   }
 
-  return lines.join('\r\n\r\n')
+  return withShareIntro(lines.join('\r\n\r\n'))
 }
 
 export function buildDuplicateText(stickers, collection) {
   if (!stickers.length) {
-    return 'No tengo estampitas repetidas registradas.'
+    return withShareIntro('No tengo estampitas repetidas registradas.')
   }
 
   const grouped = {}
@@ -58,13 +64,13 @@ export function buildDuplicateText(stickers, collection) {
     for (const [groupName, data] of Object.entries(grouped)) {
       lines.push(`• ${groupName}: ${data.count} repetidas`)
     }
-    return lines.join('\r\n')
+    return withShareIntro(lines.join('\r\n'))
   }
 
   const groupNames = Object.keys(grouped)
   if (groupNames.length === 1) {
     const groupName = groupNames[0]
-    return `Tengo repetidas de *${groupName.toUpperCase()}*:\r\n${grouped[groupName].codes.map(c => `- ${c}`).join('\r\n')}`
+    return withShareIntro(`Tengo repetidas de *${groupName.toUpperCase()}*:\r\n${grouped[groupName].codes.map(c => `- ${c}`).join('\r\n')}`)
   }
 
   const lines = ['Tengo repetidas para intercambiar:']
@@ -72,5 +78,5 @@ export function buildDuplicateText(stickers, collection) {
     lines.push(`*${groupName.toUpperCase()}*:\r\n${data.codes.map(c => `- ${c}`).join('\r\n')}`)
   }
 
-  return lines.join('\r\n\r\n')
+  return withShareIntro(lines.join('\r\n\r\n'))
 }

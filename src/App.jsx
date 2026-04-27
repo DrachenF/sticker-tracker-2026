@@ -20,6 +20,7 @@ const CHECKLIST_PATH = '/data/checklist_mundial_2026_base_980_template.json'
 const TARGET_HIGHLIGHT_MS = 880
 const SOUND_ENABLED_KEY = 'sticker-tracker-2026-sound-enabled'
 const ALBUM_FILTER_KEY = 'sticker-tracker-album-filter'
+const SITE_URL = 'https://mi-album-2026-guatemala.vercel.app'
 
 const tabs = [
   { id: 'home', label: 'Inicio' },
@@ -98,6 +99,9 @@ const infoPages = {
   '/precio-album-mundial-2026-guatemala': {
     label: 'Precios Guatemala',
     title: 'Precio del álbum Mundial 2026 en Guatemala',
+    seoTitle: 'Precio álbum Mundial 2026 Guatemala | Sobres y cajas',
+    description:
+      'Consulta precios publicados en nuestra página: sobre individual Q9.50, caja de 104 sobres Q950, álbum pasta suave Q30 y pasta dura Q150. Venta en Guatemala por WhatsApp.',
     body: [
       'Consulta precios publicados en nuestra página para álbumes, sobres y cajas del Mundial 2026 en Guatemala.',
       'Vendemos producto físico original para coleccionistas. Los precios están sujetos a disponibilidad.',
@@ -124,6 +128,9 @@ const infoPages = {
   '/album-mundial-2026-guatemala': {
     label: 'Venta Guatemala',
     title: 'Álbum Mundial 2026 en Guatemala',
+    seoTitle: 'Álbum Mundial 2026 Guatemala | Compra álbum y sobres',
+    description:
+      'Compra álbum Mundial 2026 en Guatemala. Álbum pasta suave Q30, pasta dura Q150, sobre Q9.50 y caja de 104 sobres Q950. Consulta disponibilidad por WhatsApp.',
     body: [
       'Compra álbumes, sobres y cajas del Mundial 2026 en Guatemala.',
       'Consulta disponibilidad por WhatsApp. También puedes usar Mi Álbum 2026 como herramienta digital no oficial para controlar tus estampitas, faltantes, repetidas y pegadas.',
@@ -148,6 +155,9 @@ const infoPages = {
   '/sobres-mundial-2026-guatemala': {
     label: 'Sobres Guatemala',
     title: 'Sobres del Mundial 2026 en Guatemala',
+    seoTitle: 'Sobres Mundial 2026 Guatemala | Caja de 104 sobres',
+    description:
+      'Compra sobres del Mundial 2026 en Guatemala. Sobre individual Q9.50 y caja de 104 sobres Q950 en oferta. Consulta disponibilidad por WhatsApp.',
     body: [
       'Consulta disponibilidad de sobres y cajas del Mundial 2026 en Guatemala.',
     ],
@@ -171,6 +181,9 @@ const infoPages = {
   '/todos-los-cromos-mundial-2026': {
     label: 'Cromos 2026',
     title: 'Todos los cromos del Mundial 2026',
+    seoTitle: 'Todos los cromos del Mundial 2026 | Checklist no oficial',
+    description:
+      'Checklist digital no oficial para controlar cromos, figuritas, estampitas y stickers del Mundial 2026. Marca las que tienes, repetidas, pegadas y revisa tu progreso.',
     body: [
       'Mi Álbum 2026 es una herramienta no oficial para controlar tu colección del Mundial 2026. Puedes usarla para marcar las estampitas que ya tienes, ver tus faltantes, registrar repetidas, marcar pegadas y llevar el progreso de tu álbum desde el celular.',
       'En algunos países se les llama cromos, en otros figuritas, estampitas, láminas o stickers. La app funciona como checklist digital para organizar tu colección sin importar cómo les llames.',
@@ -187,11 +200,13 @@ const infoPages = {
       { href: '/figuritas-mundial-2026', text: 'Figuritas' },
       { href: '/stickers-mundial-2026', text: 'Stickers' },
     ],
-    description: 'Checklist digital no oficial para todos los cromos del Mundial 2026.',
   },
   '/lista-estampitas-mundial-2026': {
     label: 'Estampitas',
     title: 'Lista de estampitas del Mundial 2026',
+    seoTitle: 'Lista de estampitas Mundial 2026 | Checklist digital',
+    description:
+      'Usa Mi Álbum 2026 como lista digital no oficial para controlar estampitas del Mundial 2026: tenidas, repetidas, pegadas y progreso de colección.',
     body: [
       'Usa Mi Álbum 2026 como lista digital no oficial para controlar tus estampitas, faltantes, repetidas y pegadas. Esta herramienta está pensada para coleccionistas que quieren organizar su álbum desde el celular.',
     ],
@@ -199,11 +214,11 @@ const infoPages = {
       { href: '/todos-los-cromos-mundial-2026', text: 'Todos los cromos' },
       { href: '/', text: 'Usar checklist digital' },
     ],
-    description: 'Lista de estampitas del Mundial 2026 en formato digital no oficial.',
   },
   '/figuritas-mundial-2026': {
     label: 'Figuritas',
     title: 'Figuritas del Mundial 2026',
+    seoTitle: 'Figuritas del Mundial 2026 | Checklist digital no oficial',
     body: [
       'Si en tu país les llamas figuritas, puedes usar Mi Álbum 2026 para llevar un control digital no oficial de tu colección: figuritas que tienes, faltantes, repetidas y pegadas.',
     ],
@@ -216,6 +231,7 @@ const infoPages = {
   '/stickers-mundial-2026': {
     label: 'Stickers',
     title: 'Stickers del Mundial 2026',
+    seoTitle: 'Stickers del Mundial 2026 | Checklist digital no oficial',
     body: [
       'Controla tus stickers del Mundial 2026 con una herramienta digital no oficial. Marca los que tienes, revisa faltantes, registra repetidas y guarda tu progreso.',
     ],
@@ -225,6 +241,36 @@ const infoPages = {
     ],
     description: 'Checklist digital no oficial para stickers del Mundial 2026.',
   },
+}
+
+function setOrCreateMeta(selector, setAttributes) {
+  let element = document.querySelector(selector)
+  const existed = Boolean(element)
+
+  if (!element) {
+    element = document.createElement('meta')
+    document.head.appendChild(element)
+  }
+
+  Object.entries(setAttributes).forEach(([key, value]) => {
+    element.setAttribute(key, value)
+  })
+
+  return { element, existed }
+}
+
+function setOrCreateCanonical(href) {
+  let element = document.querySelector('link[rel="canonical"]')
+  const existed = Boolean(element)
+
+  if (!element) {
+    element = document.createElement('link')
+    element.setAttribute('rel', 'canonical')
+    document.head.appendChild(element)
+  }
+
+  element.setAttribute('href', href)
+  return { element, existed }
 }
 
 function normalizePathname(pathname) {
@@ -237,35 +283,88 @@ function normalizePathname(pathname) {
 
 function InfoPage({ page }) {
   useEffect(() => {
-    const previousTitle = document.title
-    const existingMeta = document.querySelector('meta[name="description"]')
-    const previousDescription = existingMeta?.getAttribute('content') || ''
-
-    document.title = `${page.title} | Mi Álbum 2026`
-
-    const nextDescription =
+    const pathname = normalizePathname(window.location.pathname)
+    const canonicalHref = `${SITE_URL}${pathname === '/' ? '' : pathname}`
+    const titleValue = page.seoTitle || `${page.title} | Mi Álbum 2026`
+    const descriptionValue =
       page.description ||
       page.body?.[0] ||
       'Mi Álbum 2026, herramienta no oficial para coleccionistas.'
+    const previousTitle = document.title
+    const trackedNodes = []
 
-    let metaDescription = existingMeta
-    if (!metaDescription) {
-      metaDescription = document.createElement('meta')
-      metaDescription.setAttribute('name', 'description')
-      document.head.appendChild(metaDescription)
+    const captureNode = (node, existed) => {
+      trackedNodes.push({
+        node,
+        existed,
+        attrs: node.getAttributeNames().reduce((acc, name) => {
+          acc[name] = node.getAttribute(name)
+          return acc
+        }, {}),
+      })
     }
 
-    metaDescription.setAttribute('content', nextDescription)
+    const descriptionMeta = setOrCreateMeta('meta[name="description"]', {
+      name: 'description',
+      content: descriptionValue,
+    })
+    const ogTitleMeta = setOrCreateMeta('meta[property="og:title"]', {
+      property: 'og:title',
+      content: titleValue,
+    })
+    const ogDescriptionMeta = setOrCreateMeta('meta[property="og:description"]', {
+      property: 'og:description',
+      content: descriptionValue,
+    })
+    const ogUrlMeta = setOrCreateMeta('meta[property="og:url"]', {
+      property: 'og:url',
+      content: canonicalHref,
+    })
+    const twitterTitleMeta = setOrCreateMeta('meta[name="twitter:title"]', {
+      name: 'twitter:title',
+      content: titleValue,
+    })
+    const twitterDescriptionMeta = setOrCreateMeta('meta[name="twitter:description"]', {
+      name: 'twitter:description',
+      content: descriptionValue,
+    })
+    const canonicalLink = setOrCreateCanonical(canonicalHref)
+
+    ;[
+      descriptionMeta,
+      ogTitleMeta,
+      ogDescriptionMeta,
+      ogUrlMeta,
+      twitterTitleMeta,
+      twitterDescriptionMeta,
+      canonicalLink,
+    ].forEach(({ element, existed }) => captureNode(element, existed))
+
+    document.title = titleValue
 
     return () => {
       document.title = previousTitle
-      if (metaDescription) {
-        if (previousDescription) {
-          metaDescription.setAttribute('content', previousDescription)
-        } else if (!existingMeta) {
-          metaDescription.remove()
+
+      trackedNodes.forEach(({ node, existed, attrs }) => {
+        if (!existed) {
+          node.remove()
+          return
         }
-      }
+
+        node.getAttributeNames().forEach((attrName) => {
+          if (!(attrName in attrs)) {
+            node.removeAttribute(attrName)
+          }
+        })
+
+        Object.entries(attrs).forEach(([name, value]) => {
+          if (value === null || typeof value === 'undefined') {
+            node.removeAttribute(name)
+          } else {
+            node.setAttribute(name, value)
+          }
+        })
+      })
     }
   }, [page])
 
@@ -882,6 +981,46 @@ function App() {
   }
 
   const currentInfoPage = infoPages[normalizePathname(window.location.pathname)]
+
+  useEffect(() => {
+    const pathname = normalizePathname(window.location.pathname)
+
+    if (currentInfoPage || pathname !== '/') {
+      return
+    }
+
+    const titleValue = 'Mi Álbum 2026 | Controla tus estampitas'
+    const descriptionValue =
+      'Controla tus estampitas del álbum 2026: marca las que tienes, faltantes, repetidas y pegadas. Herramienta no oficial para coleccionistas.'
+    const canonicalHref = `${SITE_URL}/`
+
+    document.title = titleValue
+    setOrCreateMeta('meta[name="description"]', {
+      name: 'description',
+      content: descriptionValue,
+    })
+    setOrCreateMeta('meta[property="og:title"]', {
+      property: 'og:title',
+      content: titleValue,
+    })
+    setOrCreateMeta('meta[property="og:description"]', {
+      property: 'og:description',
+      content: descriptionValue,
+    })
+    setOrCreateMeta('meta[property="og:url"]', {
+      property: 'og:url',
+      content: canonicalHref,
+    })
+    setOrCreateMeta('meta[name="twitter:title"]', {
+      name: 'twitter:title',
+      content: titleValue,
+    })
+    setOrCreateMeta('meta[name="twitter:description"]', {
+      name: 'twitter:description',
+      content: descriptionValue,
+    })
+    setOrCreateCanonical(canonicalHref)
+  }, [currentInfoPage])
 
   if (currentInfoPage) {
     return <InfoPage page={currentInfoPage} />

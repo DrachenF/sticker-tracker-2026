@@ -20,10 +20,11 @@ const CHECKLIST_PATH = '/data/checklist_mundial_2026_base_980_template.json'
 const TARGET_HIGHLIGHT_MS = 880
 const SOUND_ENABLED_KEY = 'sticker-tracker-2026-sound-enabled'
 const ALBUM_FILTER_KEY = 'sticker-tracker-album-filter'
+const SITE_URL = 'https://mi-album-2026-guatemala.vercel.app'
 
 const tabs = [
   { id: 'home', label: 'Inicio' },
-  { id: 'album', label: 'Mi album' },
+  { id: 'album', label: 'Mi álbum' },
   { id: 'missing', label: 'Faltantes' },
   { id: 'duplicates', label: 'Repetidas' },
   { id: 'settings', label: 'Ajustes' },
@@ -31,7 +32,7 @@ const tabs = [
 
 const infoPages = {
   '/como-usar': {
-    label: 'Guia',
+    label: 'Guía',
     title: 'Cómo usar Mi Álbum 2026',
     body: [
       'Mi Álbum 2026 sirve para controlar estampitas desde el celular de forma simple y no oficial.',
@@ -95,6 +96,181 @@ const infoPages = {
       { href: '/checklist-album-mundial-2026', text: 'Checklist digital' },
     ],
   },
+  '/precio-album-mundial-2026-guatemala': {
+    label: 'Precios Guatemala',
+    title: 'Precio del álbum Mundial 2026 en Guatemala',
+    seoTitle: 'Precio álbum Mundial 2026 Guatemala | Sobres y cajas',
+    description:
+      'Consulta precios publicados en nuestra página: sobre individual Q9.50, caja de 104 sobres Q950, álbum pasta suave Q30 y pasta dura Q150. Venta en Guatemala por WhatsApp.',
+    body: [
+      'Consulta precios publicados en nuestra página para álbumes, sobres y cajas del Mundial 2026 en Guatemala.',
+      'Vendemos producto físico original para coleccionistas. Los precios están sujetos a disponibilidad.',
+    ],
+    priceCards: [
+      { label: 'Sobre individual', value: 'Q9.50' },
+      { label: 'Caja de 104 sobres', value: 'Q950', note: 'Precio de oferta' },
+      { label: 'Álbum pasta suave', value: 'Q30' },
+      { label: 'Álbum pasta dura', value: 'Q150' },
+    ],
+    highlight:
+      'La caja incluye 104 sobres. Comprando 104 sobres individuales pagarías Q988; con la oferta de caja pagas Q950 y ahorras Q38.',
+    whatsapp: {
+      href: 'https://wa.me/50258714824?text=Hola%2C%20quiero%20consultar%20precios%20del%20album%2C%20sobres%20y%20caja%20del%20Mundial%202026%20en%20Guatemala.',
+      text: 'Consultar precios por WhatsApp',
+    },
+    legalNotice:
+      'Mi Álbum 2026 es una herramienta y página de venta no afiliada ni patrocinada por FIFA, Panini ni ninguna entidad oficial. Las marcas mencionadas pertenecen a sus respectivos propietarios.',
+    links: [
+      { href: '/sobres-mundial-2026-guatemala', text: 'Ver sobres y cajas' },
+      { href: '/album-mundial-2026-guatemala', text: 'Álbum en Guatemala' },
+    ],
+  },
+  '/album-mundial-2026-guatemala': {
+    label: 'Venta Guatemala',
+    title: 'Álbum Mundial 2026 en Guatemala',
+    seoTitle: 'Álbum Mundial 2026 Guatemala | Compra álbum y sobres',
+    description:
+      'Compra álbum Mundial 2026 en Guatemala. Álbum pasta suave Q30, pasta dura Q150, sobre Q9.50 y caja de 104 sobres Q950. Consulta disponibilidad por WhatsApp.',
+    body: [
+      'Compra álbumes, sobres y cajas del Mundial 2026 en Guatemala.',
+      'Consulta disponibilidad por WhatsApp. También puedes usar Mi Álbum 2026 como herramienta digital no oficial para controlar tus estampitas, faltantes, repetidas y pegadas.',
+    ],
+    priceCards: [
+      { label: 'Sobre', value: 'Q9.50' },
+      { label: 'Caja de 104 sobres', value: 'Q950' },
+      { label: 'Álbum pasta suave', value: 'Q30' },
+      { label: 'Álbum pasta dura', value: 'Q150' },
+    ],
+    whatsapp: {
+      href: 'https://wa.me/50258714824?text=Hola%2C%20quiero%20comprar%20album%2C%20sobres%20o%20caja%20del%20Mundial%202026%20en%20Guatemala.',
+      text: 'Comprar por WhatsApp',
+    },
+    legalNotice:
+      'Mi Álbum 2026 es una herramienta y página de venta no afiliada ni patrocinada por FIFA, Panini ni ninguna entidad oficial. Las marcas mencionadas pertenecen a sus respectivos propietarios.',
+    links: [
+      { href: '/precio-album-mundial-2026-guatemala', text: 'Ver precios' },
+      { href: '/sobres-mundial-2026-guatemala', text: 'Comprar sobres' },
+    ],
+  },
+  '/sobres-mundial-2026-guatemala': {
+    label: 'Sobres Guatemala',
+    title: 'Sobres del Mundial 2026 en Guatemala',
+    seoTitle: 'Sobres Mundial 2026 Guatemala | Caja de 104 sobres',
+    description:
+      'Compra sobres del Mundial 2026 en Guatemala. Sobre individual Q9.50 y caja de 104 sobres Q950 en oferta. Consulta disponibilidad por WhatsApp.',
+    body: [
+      'Consulta disponibilidad de sobres y cajas del Mundial 2026 en Guatemala.',
+    ],
+    priceCards: [
+      { label: 'Sobre individual', value: 'Q9.50' },
+      { label: 'Caja de 104 sobres', value: 'Q950', note: 'Oferta' },
+      { label: 'Precio efectivo aproximado por sobre en caja', value: 'Q9.13' },
+      { label: 'Ahorro aproximado vs 104 sobres individuales', value: 'Q38' },
+    ],
+    whatsapp: {
+      href: 'https://wa.me/50258714824?text=Hola%2C%20quiero%20consultar%20sobres%20y%20cajas%20del%20Mundial%202026%20en%20Guatemala.',
+      text: 'Consultar sobres por WhatsApp',
+    },
+    legalNotice:
+      'Mi Álbum 2026 es una herramienta y página de venta no afiliada ni patrocinada por FIFA, Panini ni ninguna entidad oficial. Las marcas mencionadas pertenecen a sus respectivos propietarios.',
+    links: [
+      { href: '/precio-album-mundial-2026-guatemala', text: 'Ver precios' },
+      { href: '/album-mundial-2026-guatemala', text: 'Álbum en Guatemala' },
+    ],
+  },
+  '/todos-los-cromos-mundial-2026': {
+    label: 'Cromos 2026',
+    title: 'Todos los cromos del Mundial 2026',
+    seoTitle: 'Todos los cromos del Mundial 2026 | Checklist no oficial',
+    description:
+      'Checklist digital no oficial para controlar cromos, figuritas, estampitas y stickers del Mundial 2026. Marca las que tienes, repetidas, pegadas y revisa tu progreso.',
+    body: [
+      'Mi Álbum 2026 es una herramienta no oficial para controlar tu colección del Mundial 2026. Puedes usarla para marcar las estampitas que ya tienes, ver tus faltantes, registrar repetidas, marcar pegadas y llevar el progreso de tu álbum desde el celular.',
+      'En algunos países se les llama cromos, en otros figuritas, estampitas, láminas o stickers. La app funciona como checklist digital para organizar tu colección sin importar cómo les llames.',
+      'No ofrecemos material oficial ni imágenes protegidas. Esta es una herramienta de organización para coleccionistas.',
+    ],
+    download: {
+      href: '/downloads/mi-album-2026-checklist-no-oficial.pdf',
+      text: 'Descargar checklist PDF',
+    },
+    links: [
+      { href: '/', text: 'Usar checklist digital' },
+      { href: '/album-mundial-2026-guatemala', text: 'Comprar en Guatemala' },
+      { href: '/lista-estampitas-mundial-2026', text: 'Lista de estampitas' },
+      { href: '/figuritas-mundial-2026', text: 'Figuritas' },
+      { href: '/stickers-mundial-2026', text: 'Stickers' },
+    ],
+  },
+  '/lista-estampitas-mundial-2026': {
+    label: 'Estampitas',
+    title: 'Lista de estampitas del Mundial 2026',
+    seoTitle: 'Lista de estampitas Mundial 2026 | Checklist digital',
+    description:
+      'Usa Mi Álbum 2026 como lista digital no oficial para controlar estampitas del Mundial 2026: tenidas, repetidas, pegadas y progreso de colección.',
+    body: [
+      'Usa Mi Álbum 2026 como lista digital no oficial para controlar tus estampitas, faltantes, repetidas y pegadas. Esta herramienta está pensada para coleccionistas que quieren organizar su álbum desde el celular.',
+    ],
+    links: [
+      { href: '/todos-los-cromos-mundial-2026', text: 'Todos los cromos' },
+      { href: '/', text: 'Usar checklist digital' },
+    ],
+  },
+  '/figuritas-mundial-2026': {
+    label: 'Figuritas',
+    title: 'Figuritas del Mundial 2026',
+    seoTitle: 'Figuritas del Mundial 2026 | Checklist digital no oficial',
+    body: [
+      'Si en tu país les llamas figuritas, puedes usar Mi Álbum 2026 para llevar un control digital no oficial de tu colección: figuritas que tienes, faltantes, repetidas y pegadas.',
+    ],
+    links: [
+      { href: '/todos-los-cromos-mundial-2026', text: 'Todos los cromos' },
+      { href: '/', text: 'Usar checklist digital' },
+    ],
+    description: 'Control de figuritas del Mundial 2026 con herramienta digital no oficial.',
+  },
+  '/stickers-mundial-2026': {
+    label: 'Stickers',
+    title: 'Stickers del Mundial 2026',
+    seoTitle: 'Stickers del Mundial 2026 | Checklist digital no oficial',
+    body: [
+      'Controla tus stickers del Mundial 2026 con una herramienta digital no oficial. Marca los que tienes, revisa faltantes, registra repetidas y guarda tu progreso.',
+    ],
+    links: [
+      { href: '/todos-los-cromos-mundial-2026', text: 'Todos los cromos' },
+      { href: '/', text: 'Usar checklist digital' },
+    ],
+    description: 'Checklist digital no oficial para stickers del Mundial 2026.',
+  },
+}
+
+function setOrCreateMeta(selector, setAttributes) {
+  let element = document.querySelector(selector)
+  const existed = Boolean(element)
+
+  if (!element) {
+    element = document.createElement('meta')
+    document.head.appendChild(element)
+  }
+
+  Object.entries(setAttributes).forEach(([key, value]) => {
+    element.setAttribute(key, value)
+  })
+
+  return { element, existed }
+}
+
+function setOrCreateCanonical(href) {
+  let element = document.querySelector('link[rel="canonical"]')
+  const existed = Boolean(element)
+
+  if (!element) {
+    element = document.createElement('link')
+    element.setAttribute('rel', 'canonical')
+    document.head.appendChild(element)
+  }
+
+  element.setAttribute('href', href)
+  return { element, existed }
 }
 
 function normalizePathname(pathname) {
@@ -106,6 +282,92 @@ function normalizePathname(pathname) {
 }
 
 function InfoPage({ page }) {
+  useEffect(() => {
+    const pathname = normalizePathname(window.location.pathname)
+    const canonicalHref = `${SITE_URL}${pathname === '/' ? '' : pathname}`
+    const titleValue = page.seoTitle || `${page.title} | Mi Álbum 2026`
+    const descriptionValue =
+      page.description ||
+      page.body?.[0] ||
+      'Mi Álbum 2026, herramienta no oficial para coleccionistas.'
+    const previousTitle = document.title
+    const trackedNodes = []
+
+    const captureNode = (node, existed) => {
+      trackedNodes.push({
+        node,
+        existed,
+        attrs: node.getAttributeNames().reduce((acc, name) => {
+          acc[name] = node.getAttribute(name)
+          return acc
+        }, {}),
+      })
+    }
+
+    const descriptionMeta = setOrCreateMeta('meta[name="description"]', {
+      name: 'description',
+      content: descriptionValue,
+    })
+    const ogTitleMeta = setOrCreateMeta('meta[property="og:title"]', {
+      property: 'og:title',
+      content: titleValue,
+    })
+    const ogDescriptionMeta = setOrCreateMeta('meta[property="og:description"]', {
+      property: 'og:description',
+      content: descriptionValue,
+    })
+    const ogUrlMeta = setOrCreateMeta('meta[property="og:url"]', {
+      property: 'og:url',
+      content: canonicalHref,
+    })
+    const twitterTitleMeta = setOrCreateMeta('meta[name="twitter:title"]', {
+      name: 'twitter:title',
+      content: titleValue,
+    })
+    const twitterDescriptionMeta = setOrCreateMeta('meta[name="twitter:description"]', {
+      name: 'twitter:description',
+      content: descriptionValue,
+    })
+    const canonicalLink = setOrCreateCanonical(canonicalHref)
+
+    ;[
+      descriptionMeta,
+      ogTitleMeta,
+      ogDescriptionMeta,
+      ogUrlMeta,
+      twitterTitleMeta,
+      twitterDescriptionMeta,
+      canonicalLink,
+    ].forEach(({ element, existed }) => captureNode(element, existed))
+
+    document.title = titleValue
+
+    return () => {
+      document.title = previousTitle
+
+      trackedNodes.forEach(({ node, existed, attrs }) => {
+        if (!existed) {
+          node.remove()
+          return
+        }
+
+        node.getAttributeNames().forEach((attrName) => {
+          if (!(attrName in attrs)) {
+            node.removeAttribute(attrName)
+          }
+        })
+
+        Object.entries(attrs).forEach(([name, value]) => {
+          if (value === null || typeof value === 'undefined') {
+            node.removeAttribute(name)
+          } else {
+            node.setAttribute(name, value)
+          }
+        })
+      })
+    }
+  }, [page])
+
   return (
     <main className="info-page-shell">
       <article className="info-page-card">
@@ -116,12 +378,35 @@ function InfoPage({ page }) {
             <p key={paragraph}>{paragraph}</p>
           ))}
         </div>
+        {Array.isArray(page.priceCards) && page.priceCards.length ? (
+          <section className="info-price-grid" aria-label="Resumen de precios">
+            {page.priceCards.map((item) => (
+              <article key={`${item.label}-${item.value}`} className="info-price-card">
+                <p>{item.label}</p>
+                <strong>{item.value}</strong>
+                {item.note ? <span>{item.note}</span> : null}
+              </article>
+            ))}
+          </section>
+        ) : null}
+        {page.highlight ? (
+          <p className="info-price-highlight">{page.highlight}</p>
+        ) : null}
         <p className="info-page-notice">
-          Mi Álbum 2026 es una herramienta no oficial. No está afiliada,
-          patrocinada ni respaldada por FIFA, Panini ni ninguna entidad oficial.
-          Las marcas mencionadas pertenecen a sus respectivos propietarios.
+          {page.legalNotice ||
+            'Mi Álbum 2026 es una herramienta no oficial. No está afiliada, patrocinada ni respaldada por FIFA, Panini ni ninguna entidad oficial. Las marcas mencionadas pertenecen a sus respectivos propietarios.'}
         </p>
         <div className="info-page-actions">
+          {page.whatsapp ? (
+            <a
+              className="info-page-button"
+              href={page.whatsapp.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {page.whatsapp.text}
+            </a>
+          ) : null}
           {page.download ? (
             <a className="info-page-button" href={page.download.href} download>
               {page.download.text}
@@ -221,7 +506,7 @@ function App() {
         setCollection(savedCollection)
       } catch (loadError) {
         if (isMounted) {
-          setError(loadError.message || 'Ocurrio un error al cargar la app.')
+          setError(loadError.message || 'Ocurrió un error al cargar la app.')
         }
       } finally {
         if (isMounted) {
@@ -655,7 +940,7 @@ function App() {
 
   const handleResetCollection = () => {
     const wasConfirmed = window.confirm(
-      'Se borrara tu progreso guardado. Quieres reiniciar la coleccion?',
+      'Se borrará tu progreso guardado. ¿Quieres reiniciar la colección?',
     )
 
     if (!wasConfirmed) {
@@ -664,7 +949,7 @@ function App() {
 
     resetCollectionState()
     setCollection({})
-    setToast('Coleccion reiniciada.')
+    setToast('Colección reiniciada.')
   }
 
   const pageProps = {
@@ -697,6 +982,46 @@ function App() {
 
   const currentInfoPage = infoPages[normalizePathname(window.location.pathname)]
 
+  useEffect(() => {
+    const pathname = normalizePathname(window.location.pathname)
+
+    if (currentInfoPage || pathname !== '/') {
+      return
+    }
+
+    const titleValue = 'Mi Álbum 2026 | Controla tus estampitas'
+    const descriptionValue =
+      'Controla tus estampitas del álbum 2026: marca las que tienes, faltantes, repetidas y pegadas. Herramienta no oficial para coleccionistas.'
+    const canonicalHref = `${SITE_URL}/`
+
+    document.title = titleValue
+    setOrCreateMeta('meta[name="description"]', {
+      name: 'description',
+      content: descriptionValue,
+    })
+    setOrCreateMeta('meta[property="og:title"]', {
+      property: 'og:title',
+      content: titleValue,
+    })
+    setOrCreateMeta('meta[property="og:description"]', {
+      property: 'og:description',
+      content: descriptionValue,
+    })
+    setOrCreateMeta('meta[property="og:url"]', {
+      property: 'og:url',
+      content: canonicalHref,
+    })
+    setOrCreateMeta('meta[name="twitter:title"]', {
+      name: 'twitter:title',
+      content: titleValue,
+    })
+    setOrCreateMeta('meta[name="twitter:description"]', {
+      name: 'twitter:description',
+      content: descriptionValue,
+    })
+    setOrCreateCanonical(canonicalHref)
+  }, [currentInfoPage])
+
   if (currentInfoPage) {
     return <InfoPage page={currentInfoPage} />
   }
@@ -707,7 +1032,7 @@ function App() {
         <section className="state-panel">
           <p className="state-kicker">Sticker Tracker 2026</p>
           <h1>Cargando checklist base...</h1>
-          <p>Preparando tu control personal de coleccion.</p>
+          <p>Preparando tu control personal de colección.</p>
         </section>
       )
     }

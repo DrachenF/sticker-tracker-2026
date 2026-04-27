@@ -5,7 +5,7 @@ function ProgressCard({ stats }) {
     <section className="progress-card">
       <div className="progress-card-top">
         <div>
-          <p className="page-label">Mi coleccion base</p>
+          <p className="page-label">Mi colección base</p>
           <h2>
             {stats.owned} <span>/ {stats.total}</span>
           </h2>

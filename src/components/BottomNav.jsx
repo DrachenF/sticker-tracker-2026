@@ -60,7 +60,7 @@ const BottomNav = forwardRef(function BottomNav(
   ref,
 ) {
   return (
-    <nav ref={ref} className="bottom-nav" aria-label="Navegacion principal">
+    <nav ref={ref} className="bottom-nav" aria-label="Navegación principal">
       {tabs.map((tab) => (
         <button
           key={tab.id}

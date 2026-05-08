@@ -2342,7 +2342,7 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.67rem;
+  font-size: 0.65rem;
   line-height: 1;
   white-space: nowrap;
 }
@@ -2368,6 +2368,8 @@ a {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 0.72rem;
+  letter-spacing: 0.01em;
 }
 
 .home-shop-copy span {
@@ -2404,20 +2406,30 @@ a {
   flex: 0 0 auto;
 }
 
+.home-shop-links-muted a {
+  min-height: 20px;
+  padding: 2px 7px;
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: #475569;
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
 .home-shop-button {
   min-height: 30px;
   display: inline-grid;
   place-items: center;
   padding: 7px 11px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
+  background: linear-gradient(180deg, #ef4444, #dc2626);
   color: #ffffff;
   font-size: 0.64rem;
   font-weight: 900;
   line-height: 1;
   text-align: center;
   text-decoration: none;
-  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.16);
+  box-shadow: 0 8px 16px rgba(220, 38, 38, 0.18);
   white-space: nowrap;
 }
 

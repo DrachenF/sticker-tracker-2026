@@ -525,10 +525,7 @@ function HomePage({ stats, teams, onNavigate }) {
             <span>Canal oficial del creador</span>
           </p>
           <p className="home-shop-line">YouTube.com/Drachenf</p>
-          <nav className="home-shop-links home-shop-links-muted" aria-label="Enlaces informativos">
-            <a href="/precio-album-mundial-2026-guatemala">Ver precios</a>
-            <a href="/sobres-mundial-2026-guatemala">Comprar sobres</a>
-          </nav>
+          <p className="home-shop-footnote">youtube.com/@drachenf</p>
         </div>
         <a
           className="home-shop-button"

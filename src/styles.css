@@ -2406,14 +2406,11 @@ a {
   flex: 0 0 auto;
 }
 
-.home-shop-links-muted a {
-  min-height: 20px;
-  padding: 2px 7px;
-  font-size: 0.52rem;
-  font-weight: 700;
-  color: #475569;
-  background: #f8fafc;
-  border-color: rgba(148, 163, 184, 0.3);
+.home-shop-footnote {
+  margin: 0;
+  font-size: 0.54rem;
+  line-height: 1.05;
+  color: #64748b;
 }
 
 .home-shop-button {

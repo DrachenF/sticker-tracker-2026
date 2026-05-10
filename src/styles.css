@@ -1891,6 +1891,21 @@ a {
   color: var(--blue);
 }
 
+.action-button.action-button-ghost {
+  background: #eff6ff;
+  color: var(--blue);
+}
+
+.settings-history-list {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: grid;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
 .empty-state {
   padding: 20px;
   border-radius: var(--radius-md);

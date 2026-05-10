@@ -37,6 +37,21 @@ function buildStickerHistoryLabel(sticker) {
   return `${teamOrSection} ${numberOrCode}${stickerName}`.trim()
 }
 
+function normalizeAddedHistoryEntry(entry) {
+  if (typeof entry === 'string') {
+    return { code: entry, kind: 'owned' }
+  }
+
+  if (!entry || typeof entry !== 'object' || !entry.code) {
+    return null
+  }
+
+  return {
+    code: String(entry.code),
+    kind: entry.kind === 'duplicate' ? 'duplicate' : 'owned',
+  }
+}
+
 const tabs = [
   { id: 'home', label: 'Inicio' },
   { id: 'album', label: 'Mi álbum' },
@@ -501,7 +516,14 @@ function App() {
     try {
       const raw = localStorage.getItem(ADDED_HISTORY_KEY)
       const parsed = raw ? JSON.parse(raw) : []
-      return Array.isArray(parsed) ? parsed.slice(0, HISTORY_MAX) : []
+      if (!Array.isArray(parsed)) {
+        return []
+      }
+
+      return parsed
+        .map(normalizeAddedHistoryEntry)
+        .filter(Boolean)
+        .slice(0, HISTORY_MAX)
     } catch {
       return []
     }
@@ -887,7 +909,13 @@ function App() {
     setMovementHistory((currentHistory) => [actionText, ...currentHistory].slice(0, HISTORY_MAX))
 
     if (!isCurrentlyOwned) {
-      setAddedHistory((currentHistory) => [code, ...currentHistory.filter((item) => item !== code)].slice(0, HISTORY_MAX))
+      setAddedHistory((currentHistory) => {
+        const nextEntry = { code, kind: 'owned' }
+        return [
+          nextEntry,
+          ...currentHistory.filter((item) => !(item.code === code && item.kind === 'owned')),
+        ].slice(0, HISTORY_MAX)
+      })
     }
   }
 
@@ -910,6 +938,13 @@ function App() {
 
     const stickerLabel = stickerLabelByCode[code] || code
     setMovementHistory((currentHistory) => [`Agrego repetido ${stickerLabel}`, ...currentHistory].slice(0, HISTORY_MAX))
+    setAddedHistory((currentHistory) => {
+      const nextEntry = { code, kind: 'duplicate' }
+      return [
+        nextEntry,
+        ...currentHistory.filter((item) => !(item.code === code && item.kind === 'duplicate')),
+      ].slice(0, HISTORY_MAX)
+    })
   }
 
   const handleDecrementDuplicates = (code) => {
@@ -1030,8 +1065,19 @@ function App() {
 
   const recentAddedOwned = useMemo(() => {
     return addedHistory
-      .filter((code) => (collection[code]?.owned ?? false))
-      .map((code) => `Agregaste ${stickerLabelByCode[code] || code}`)
+      .filter((entry) => {
+        if (entry.kind === 'duplicate') {
+          return (collection[entry.code]?.duplicates ?? 0) > 0
+        }
+
+        return collection[entry.code]?.owned ?? false
+      })
+      .map((entry) => {
+        const label = stickerLabelByCode[entry.code] || entry.code
+        return entry.kind === 'duplicate'
+          ? `Agregaste repetido ${label}`
+          : `Agregaste ${label}`
+      })
       .slice(0, HISTORY_MAX)
   }, [addedHistory, collection, stickerLabelByCode])
 

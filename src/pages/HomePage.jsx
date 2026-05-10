@@ -519,25 +519,21 @@ function HomePage({ stats, teams, onNavigate }) {
         stats={stats}
       />
 
-      <section className="home-shop-card" aria-label="Disponibilidad en Guatemala">
+      <section className="home-shop-card" aria-label="Canal de YouTube del creador">
         <div className="home-shop-copy">
           <p className="quick-label home-shop-country">
-            <img src="https://flagcdn.com/gt.svg" alt="" aria-hidden="true" />
-            <span>Guatemala · Sobres desde Q9.50</span>
+            <span>Canal oficial del creador</span>
           </p>
-          <p className="home-shop-line">Caja 104 sobres Q950 · Álbum desde Q30</p>
-          <nav className="home-shop-links" aria-label="Páginas comerciales en Guatemala">
-            <a href="/precio-album-mundial-2026-guatemala">Ver precios</a>
-            <a href="/sobres-mundial-2026-guatemala">Comprar sobres</a>
-          </nav>
+          <p className="home-shop-line">YouTube.com/Drachenf</p>
+          <p className="home-shop-footnote">youtube.com/@drachenf</p>
         </div>
         <a
           className="home-shop-button"
-          href="https://wa.me/50258714824?text=Hola%2C%20quiero%20consultar%20disponibilidad%20de%20album%2C%20sobres%20o%20estampitas%20del%20Mundial%202026%20en%20Guatemala."
+          href="https://youtube.com/@drachenf"
           target="_blank"
           rel="noopener noreferrer"
         >
-          WhatsApp
+          Ver canal
         </a>
       </section>
 

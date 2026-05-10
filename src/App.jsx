@@ -25,6 +25,18 @@ const ADDED_HISTORY_KEY = 'sticker-tracker-2026-added-history'
 const SITE_URL = 'https://mi-album-2026-guatemala.vercel.app'
 const HISTORY_MAX = 50
 
+function buildStickerHistoryLabel(sticker) {
+  if (!sticker) {
+    return ''
+  }
+
+  const teamOrSection = sticker.teamNameEs || sticker.teamName || sticker.section || 'Sección'
+  const numberOrCode = sticker.localNumber || sticker.code || ''
+  const stickerName = sticker.name ? ` · ${sticker.name}` : ''
+
+  return `${teamOrSection} ${numberOrCode}${stickerName}`.trim()
+}
+
 const tabs = [
   { id: 'home', label: 'Inicio' },
   { id: 'album', label: 'Mi álbum' },
@@ -474,7 +486,13 @@ function App() {
     try {
       const raw = localStorage.getItem(MOVEMENT_HISTORY_KEY)
       const parsed = raw ? JSON.parse(raw) : []
-      return Array.isArray(parsed) ? parsed.slice(0, HISTORY_MAX) : []
+      if (!Array.isArray(parsed)) {
+        return []
+      }
+
+      return parsed
+        .filter((item) => typeof item === 'string' && !item.includes('undefined'))
+        .slice(0, HISTORY_MAX)
     } catch {
       return []
     }
@@ -823,7 +841,7 @@ function App() {
   const teams = useMemo(() => checklist?.teams ?? [], [checklist])
   const stickerLabelByCode = useMemo(() => {
     return stickers.reduce((acc, sticker) => {
-      acc[sticker.code] = `${sticker.team} ${sticker.number}`
+      acc[sticker.code] = buildStickerHistoryLabel(sticker)
       return acc
     }, {})
   }, [stickers])

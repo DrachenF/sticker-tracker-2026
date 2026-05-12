@@ -20,7 +20,37 @@ const CHECKLIST_PATH = '/data/checklist_mundial_2026_base_980_template.json'
 const TARGET_HIGHLIGHT_MS = 880
 const SOUND_ENABLED_KEY = 'sticker-tracker-2026-sound-enabled'
 const ALBUM_FILTER_KEY = 'sticker-tracker-album-filter'
+const MOVEMENT_HISTORY_KEY = 'sticker-tracker-2026-movement-history'
+const ADDED_HISTORY_KEY = 'sticker-tracker-2026-added-history'
 const SITE_URL = 'https://mi-album-2026-guatemala.vercel.app'
+const HISTORY_MAX = 50
+
+function buildStickerHistoryLabel(sticker) {
+  if (!sticker) {
+    return ''
+  }
+
+  const teamOrSection = sticker.teamNameEs || sticker.teamName || sticker.section || 'Sección'
+  const numberOrCode = sticker.localNumber || sticker.code || ''
+  const stickerName = sticker.name ? ` · ${sticker.name}` : ''
+
+  return `${teamOrSection} ${numberOrCode}${stickerName}`.trim()
+}
+
+function normalizeAddedHistoryEntry(entry) {
+  if (typeof entry === 'string') {
+    return { code: entry, kind: 'owned' }
+  }
+
+  if (!entry || typeof entry !== 'object' || !entry.code) {
+    return null
+  }
+
+  return {
+    code: String(entry.code),
+    kind: entry.kind === 'duplicate' ? 'duplicate' : 'owned',
+  }
+}
 
 const tabs = [
   { id: 'home', label: 'Inicio' },
@@ -451,6 +481,7 @@ function App() {
   const mainRef = useRef(null)
   const navRef = useRef(null)
   const highlightedTabTimeoutRef = useRef(null)
+  const albumIndexScrollRef = useRef(0)
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('sticker-tracker-tab') || 'home')
   const [selectedSectionId, setSelectedSectionId] = useState(() => localStorage.getItem('sticker-tracker-section') || '')
   const [albumFilter, setAlbumFilter] = useState(() => localStorage.getItem(ALBUM_FILTER_KEY) || 'all')
@@ -466,6 +497,37 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+  const [movementHistory, setMovementHistory] = useState(() => {
+    try {
+      const raw = localStorage.getItem(MOVEMENT_HISTORY_KEY)
+      const parsed = raw ? JSON.parse(raw) : []
+      if (!Array.isArray(parsed)) {
+        return []
+      }
+
+      return parsed
+        .filter((item) => typeof item === 'string' && !item.includes('undefined'))
+        .slice(0, HISTORY_MAX)
+    } catch {
+      return []
+    }
+  })
+  const [addedHistory, setAddedHistory] = useState(() => {
+    try {
+      const raw = localStorage.getItem(ADDED_HISTORY_KEY)
+      const parsed = raw ? JSON.parse(raw) : []
+      if (!Array.isArray(parsed)) {
+        return []
+      }
+
+      return parsed
+        .map(normalizeAddedHistoryEntry)
+        .filter(Boolean)
+        .slice(0, HISTORY_MAX)
+    } catch {
+      return []
+    }
+  })
   const [layoutMetrics, setLayoutMetrics] = useState({
     headerHeight: 0,
     navHeight: 0,
@@ -529,6 +591,14 @@ function App() {
 
     saveCollectionState(collection)
   }, [checklist, collection])
+
+  useEffect(() => {
+    localStorage.setItem(MOVEMENT_HISTORY_KEY, JSON.stringify(movementHistory))
+  }, [movementHistory])
+
+  useEffect(() => {
+    localStorage.setItem(ADDED_HISTORY_KEY, JSON.stringify(addedHistory))
+  }, [addedHistory])
 
   useEffect(() => {
     localStorage.setItem('sticker-tracker-tab', activeTab)
@@ -664,6 +734,7 @@ function App() {
   }, [selectedSectionId])
 
   const handleSelectSection = (sectionId) => {
+    albumIndexScrollRef.current = window.scrollY || mainRef.current?.scrollTop || 0
     setSelectedSectionId(sectionId)
     window.scrollTo(0, 0)
   }
@@ -744,11 +815,12 @@ function App() {
   }
 
   const handleCloseSection = () => {
-    if (window.history.state?.sectionId) {
-      window.history.back()
-      return
-    }
     setSelectedSectionId('')
+    window.requestAnimationFrame(() => {
+      const targetTop = Math.max(0, albumIndexScrollRef.current || 0)
+      window.scrollTo({ top: targetTop, left: 0, behavior: 'auto' })
+      mainRef.current?.scrollTo?.({ top: targetTop, left: 0, behavior: 'auto' })
+    })
   }
 
   const scrollPageToTop = () => {
@@ -789,6 +861,12 @@ function App() {
 
   const stickers = useMemo(() => checklist?.stickers ?? [], [checklist])
   const teams = useMemo(() => checklist?.teams ?? [], [checklist])
+  const stickerLabelByCode = useMemo(() => {
+    return stickers.reduce((acc, sticker) => {
+      acc[sticker.code] = buildStickerHistoryLabel(sticker)
+      return acc
+    }, {})
+  }, [stickers])
 
   const stats = useMemo(
     () => buildCollectionStats(stickers, collection),
@@ -823,6 +901,22 @@ function App() {
         pasted: nextOwned ? currentStickerState.pasted : false,
       })
     })
+
+    const stickerLabel = stickerLabelByCode[code] || code
+    const actionText = isCurrentlyOwned
+      ? `Quito ${stickerLabel}`
+      : `Agrego ${stickerLabel}`
+    setMovementHistory((currentHistory) => [actionText, ...currentHistory].slice(0, HISTORY_MAX))
+
+    if (!isCurrentlyOwned) {
+      setAddedHistory((currentHistory) => {
+        const nextEntry = { code, kind: 'owned' }
+        return [
+          nextEntry,
+          ...currentHistory.filter((item) => !(item.code === code && item.kind === 'owned')),
+        ].slice(0, HISTORY_MAX)
+      })
+    }
   }
 
   const handleIncrementDuplicates = (code) => {
@@ -840,6 +934,16 @@ function App() {
         duplicates: currentStickerState.duplicates + 1,
         pasted: currentStickerState.pasted,
       })
+    })
+
+    const stickerLabel = stickerLabelByCode[code] || code
+    setMovementHistory((currentHistory) => [`Agrego repetido ${stickerLabel}`, ...currentHistory].slice(0, HISTORY_MAX))
+    setAddedHistory((currentHistory) => {
+      const nextEntry = { code, kind: 'duplicate' }
+      return [
+        nextEntry,
+        ...currentHistory.filter((item) => !(item.code === code && item.kind === 'duplicate')),
+      ].slice(0, HISTORY_MAX)
     })
   }
 
@@ -865,6 +969,11 @@ function App() {
         pasted: currentStickerState.pasted,
       })
     })
+
+    if (currentDuplicates > 0) {
+      const stickerLabel = stickerLabelByCode[code] || code
+      setMovementHistory((currentHistory) => [`Quito de repetido ${stickerLabel}`, ...currentHistory].slice(0, HISTORY_MAX))
+    }
   }
 
   const handleTogglePasted = (code) => {
@@ -949,8 +1058,28 @@ function App() {
 
     resetCollectionState()
     setCollection({})
+    setMovementHistory([])
+    setAddedHistory([])
     setToast('Colección reiniciada.')
   }
+
+  const recentAddedOwned = useMemo(() => {
+    return addedHistory
+      .filter((entry) => {
+        if (entry.kind === 'duplicate') {
+          return (collection[entry.code]?.duplicates ?? 0) > 0
+        }
+
+        return collection[entry.code]?.owned ?? false
+      })
+      .map((entry) => {
+        const label = stickerLabelByCode[entry.code] || entry.code
+        return entry.kind === 'duplicate'
+          ? `Agregaste repetido ${label}`
+          : `Agregaste ${label}`
+      })
+      .slice(0, HISTORY_MAX)
+  }, [addedHistory, collection, stickerLabelByCode])
 
   const pageProps = {
     stickers,
@@ -1058,6 +1187,8 @@ function App() {
         return (
           <SettingsPage
             collection={collection}
+            movementHistory={movementHistory}
+            recentAddedOwned={recentAddedOwned}
             onExportBackup={handleExportBackup}
             onImportBackup={handleImportBackup}
             onResetCollection={handleResetCollection}

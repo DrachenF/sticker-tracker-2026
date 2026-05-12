@@ -18,14 +18,6 @@ export function buildMissingText(stickers) {
     grouped[groupName].push(sticker.code)
   })
 
-  if (stickers.length > 250) {
-    const lines = [`Me faltan ${stickers.length} estampitas en total. Por secciones:\r\n`]
-    for (const [groupName, codes] of Object.entries(grouped)) {
-      lines.push(`• ${groupName}: faltan ${codes.length}`)
-    }
-    return withShareIntro(lines.join('\r\n'))
-  }
-
   const groupNames = Object.keys(grouped)
   if (groupNames.length === 1) {
     const groupName = groupNames[0]
@@ -58,14 +50,6 @@ export function buildDuplicateText(stickers, collection) {
     grouped[groupName].codes.push(duplicates > 1 ? `${sticker.code} (x${duplicates})` : sticker.code)
     grouped[groupName].count += duplicates
   })
-
-  if (totalDuplicates > 250) {
-    const lines = [`Tengo ${totalDuplicates} estampitas repetidas en total. Por secciones:\r\n`]
-    for (const [groupName, data] of Object.entries(grouped)) {
-      lines.push(`• ${groupName}: ${data.count} repetidas`)
-    }
-    return withShareIntro(lines.join('\r\n'))
-  }
 
   const groupNames = Object.keys(grouped)
   if (groupNames.length === 1) {

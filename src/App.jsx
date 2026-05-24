@@ -519,6 +519,8 @@ function App() {
       return { addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [] }
     }
   })
+  const [undoPast, setUndoPast] = useState([])
+  const [undoFuture, setUndoFuture] = useState([])
   const [layoutMetrics, setLayoutMetrics] = useState({
     headerHeight: 0,
     navHeight: 0,
@@ -874,6 +876,7 @@ function App() {
       playAppSound('add')
     }
 
+    const prevState = collection
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[code] ?? {
         owned: false,
@@ -898,6 +901,7 @@ function App() {
     playAppSound('duplicate')
     pulseTab('duplicates')
 
+    const prevState = collection
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[code] ?? {
         owned: false,
@@ -922,6 +926,7 @@ function App() {
       playAppSound('duplicate')
     }
 
+    const prevState = collection
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[code]
 
@@ -1192,6 +1197,10 @@ function App() {
         highlightedTabId={highlightedTabId}
         onChange={handleTabChange}
       />
+      <div className="global-history-actions">
+        <button type="button" onClick={handleUndo} disabled={!undoPast.length}>↶ Deshacer</button>
+        <button type="button" onClick={handleRedo} disabled={!undoFuture.length}>↷ Rehacer</button>
+      </div>
 
       {toast ? <div className="toast">{toast}</div> : null}
     </div>

@@ -251,11 +251,11 @@ function scoreSmallCodeCandidate(bitmap, zone, kind, fillRatio = 0) {
   if (ratio >= 1.4 && ratio <= 9.5) score += 30
   if (ratio >= 2.0 && ratio <= 6.8) score += 30
 
-  if (stats.stdGray >= 6 && stats.stdGray <= 95) score += 22
+  if (stats.stdGray >= 7 && stats.stdGray <= 95) score += 22
   if (stats.edgeRatio >= 0.012 && stats.edgeRatio <= 0.70) score += 28
 
-  if (stats.coloredRatio <= 0.22) score += 42
-  if (stats.avgChroma <= 68) score += 28
+  if (stats.coloredRatio <= 0.12) score += 58
+  if (stats.avgChroma <= 60) score += 36
 
   if (kind.includes('light')) {
     if (stats.avgGray >= 125) score += 32
@@ -269,10 +269,18 @@ function scoreSmallCodeCandidate(bitmap, zone, kind, fillRatio = 0) {
 
   if (fillRatio >= 0.18 && fillRatio <= 0.92) score += 20
 
-  if (stats.coloredRatio >= 0.38) score -= 120
-  if (stats.avgChroma >= 100) score -= 100
-  if (stats.edgeRatio < 0.006) score -= 80
-  if (ratio < 0.9 || ratio > 13.5) score -= 90
+  // Penalizaciones agresivas contra mantel/flor/fondo.
+  if (stats.coloredRatio >= 0.12) score -= 180
+  if (stats.coloredRatio >= 0.18) score -= 260
+  if (stats.avgChroma >= 70) score -= 160
+  if (stats.avgChroma >= 90) score -= 240
+
+  // Debe tener textura de letras, no solo una mancha.
+  if (stats.edgeRatio < 0.012) score -= 140
+  if (stats.stdGray < 7) score -= 120
+
+  // Debe parecer cajita/cápsula horizontal.
+  if (ratio < 1.25 || ratio > 10.5) score -= 140
 
   return {
     score: Math.round(score),
@@ -387,10 +395,10 @@ function componentToSmallCodeCandidates(bitmap, component, scale, kind, imageAre
   })
 
   const angle = normalizeAngle(getComponentAngle(component))
-
   const type = kind === 'light-code-pill' ? 'light' : 'dark'
 
   const tight = expandZone(bitmap, base, 0.18, 0.34)
+
   const wider = clampZone(bitmap, {
     ...base,
     x: base.x - Math.floor(base.width * 0.42),
@@ -670,11 +678,8 @@ function makeSingleCropsFromBody(bitmap, body) {
   const isHorizontalSticker = ratio >= 1.05
 
   const crops = []
-
   const baseScore = 2200
 
-  // La etiqueta del código está arriba a la derecha del sticker.
-  // Sacamos varios cortes muy cercanos, no todo el sticker.
   const common = [
     {
       name: 'code-exact',
@@ -872,15 +877,37 @@ function addRotatedCopies(candidates) {
 
 function filterNoise(candidate) {
   if (candidate.forced) return true
-  if (String(candidate.kind || '').startsWith('multi-body')) return true
 
   const stats = candidate.meta || {}
   const ratio = candidate.width / Math.max(1, candidate.height)
 
-  if (Number(stats.coloredRatio || 0) >= 0.44) return false
-  if (Number(stats.avgChroma || 0) >= 105) return false
-  if (Number(stats.edgeRatio || 0) < 0.005) return false
-  if (ratio < 0.70 || ratio > 14.5) return false
+  const coloredRatio = Number(stats.coloredRatio || 0)
+  const avgChroma = Number(stats.avgChroma || 0)
+  const edgeRatio = Number(stats.edgeRatio || 0)
+  const stdGray = Number(stats.stdGray || 0)
+
+  // Quitar mantel, flor, fondo azul, verde, amarillo, rojo, etc.
+  if (coloredRatio >= 0.16) return false
+  if (avgChroma >= 72) return false
+
+  // Quitar manchas lisas sin texto.
+  if (edgeRatio < 0.012) return false
+  if (stdGray < 7) return false
+
+  // Mantener solo forma tipo código.
+  if (ratio < 1.25 || ratio > 10.5) return false
+
+  return true
+}
+
+function isCleanCrop(bitmap, candidate) {
+  if (candidate.forced) return true
+
+  const stats = measureZoneStats(bitmap, candidate)
+
+  if (stats.coloredRatio >= 0.20) return false
+  if (stats.avgChroma >= 78) return false
+  if (stats.edgeRatio < 0.008) return false
 
   return true
 }
@@ -897,9 +924,19 @@ function detectPreciseCodeCandidates(bitmap) {
   const smallLabelCandidates = uniqueZones([
     ...lightLabels,
     ...darkLabels,
-  ]).filter(filterNoise)
+  ])
+    .filter(filterNoise)
+    .sort((a, b) => b.score - a.score)
 
-  const likelySingle = isLikelySinglePhoto(bitmap, bodies)
+  const likelySingleByBody = isLikelySinglePhoto(bitmap, bodies)
+
+  // Si no detecta cuerpos, no asumimos múltiple solo por ruido.
+  const likelyMultiple = !likelySingleByBody && (
+    bodies.length >= 3 ||
+    smallLabelCandidates.length >= 6
+  )
+
+  const likelySingle = likelySingleByBody || !likelyMultiple
   const mainBody = getMainBody(bitmap, bodies)
 
   let candidates = []
@@ -908,14 +945,15 @@ function detectPreciseCodeCandidates(bitmap) {
     candidates = uniqueZones([
       ...makeSingleCropsFromBody(bitmap, mainBody),
       ...makeFixedSingleFallbacks(bitmap),
-      ...smallLabelCandidates.slice(0, 8),
+      ...smallLabelCandidates.slice(0, 4),
     ])
   } else {
     const multiBodyCrops = makeMultiCropsFromBodies(bitmap, bodies)
+      .filter(candidate => isCleanCrop(bitmap, candidate))
 
     candidates = uniqueZones([
       ...multiBodyCrops,
-      ...smallLabelCandidates,
+      ...smallLabelCandidates.slice(0, 12),
     ])
 
     candidates = uniqueZones([
@@ -932,6 +970,7 @@ function detectPreciseCodeCandidates(bitmap) {
   return {
     candidates: candidates.slice(0, likelySingle ? MAX_SINGLE_CANDIDATES : MAX_MULTI_CANDIDATES),
     likelySingle,
+    likelyMultiple,
     bodies,
     labelCount: smallLabelCandidates.length,
   }
@@ -1031,6 +1070,7 @@ function buildDebugReading(bitmap, candidate, index, detection) {
     meta.bodyRatio !== undefined ? `bodyR${meta.bodyRatio}` : '',
     meta.visual !== undefined ? `v${meta.visual}` : '',
     meta.coloredRatio !== undefined ? `color${meta.coloredRatio}` : '',
+    meta.avgChroma !== undefined ? `chroma${meta.avgChroma}` : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -1052,8 +1092,9 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   const { candidates } = detection
 
   if (DEBUG_DETECTOR) {
-    console.log('DEBUG BODY FIRST DETECTOR:', {
+    console.log('DEBUG CLEAN CODE DETECTOR:', {
       likelySingle: detection.likelySingle,
+      likelyMultiple: detection.likelyMultiple,
       bodies: detection.bodies.length,
       labels: detection.labelCount,
       count: candidates.length,

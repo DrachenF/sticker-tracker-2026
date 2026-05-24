@@ -2,9 +2,9 @@ import { classifyZoneReadings, detectCodeLabelRegions } from './ocrStickerCodes'
 
 const DEBUG_OCR = false
 
-const OCR_MIN_WIDTH = 40
-const OCR_MIN_HEIGHT = 18
-const OCR_SCALE = 5
+const OCR_MIN_WIDTH = 38
+const OCR_MIN_HEIGHT = 16
+const OCR_SCALE = 6
 
 const COMMON_FALLBACK_PREFIXES = [
   'FWC',
@@ -120,17 +120,14 @@ function buildValidStickerData(stickers) {
     )
   )
 
-  const validPrefixes = Array.from(
-    new Set([
-      ...detectedPrefixes,
-      ...COMMON_FALLBACK_PREFIXES,
-    ])
-  )
+  const validPrefixes = validCodes.size
+    ? detectedPrefixes
+    : COMMON_FALLBACK_PREFIXES
 
   return {
     validCodes,
     validPrefixes,
-    hasReliableCatalog: validCodes.size >= 100,
+    hasCatalog: validCodes.size > 0,
   }
 }
 
@@ -187,11 +184,47 @@ function sanitizeText(text) {
   return clean
 }
 
+function buildTextCandidates(rawText) {
+  const text = String(rawText || '').toUpperCase()
+  const cleanText = sanitizeText(text)
+
+  const lines = cleanText
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(Boolean)
+
+  const candidates = []
+
+  lines.forEach(line => {
+    const spaced = line.replace(/[^A-Z0-9]+/g, ' ').trim()
+    const compact = normalizeRaw(line)
+
+    if (spaced && spaced.length <= 18) {
+      candidates.push(spaced)
+    }
+
+    if (compact && compact.length <= 18) {
+      candidates.push(compact)
+    }
+  })
+
+  const firstChunk = cleanText
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+    .slice(0, 40)
+
+  if (firstChunk) {
+    candidates.push(firstChunk)
+  }
+
+  return Array.from(new Set(candidates))
+}
+
 function extractValidCodesFromText(rawText, validStickerData) {
   const {
     validCodes,
     validPrefixes,
-    hasReliableCatalog,
+    hasCatalog,
   } = validStickerData
 
   if (!validPrefixes.length) {
@@ -199,24 +232,22 @@ function extractValidCodesFromText(rawText, validStickerData) {
   }
 
   const prefixes = validPrefixes.map(escapeRegExp).join('|')
-  const cleanText = sanitizeText(rawText)
-
-  const sources = [
-    cleanText.replace(/[^A-Z0-9]+/g, ' '),
-    normalizeRaw(cleanText),
-  ]
-
+  const candidates = buildTextCandidates(rawText)
   const extractedCodes = []
 
-  for (const source of sources) {
-    const prefixRegex = new RegExp(
-      `(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`,
-      'g'
-    )
+  const normalRegex = new RegExp(
+    `(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`,
+    'g'
+  )
 
+  const compactStartRegex = new RegExp(
+    `^(${prefixes})([0-9OQDISBLZG]{1,3})`
+  )
+
+  candidates.forEach(source => {
     let match
 
-    while ((match = prefixRegex.exec(source)) !== null) {
+    while ((match = normalRegex.exec(source)) !== null) {
       const prefix = match[2]
       const number = normalizeNumberLike(match[3])
 
@@ -224,11 +255,27 @@ function extractValidCodesFromText(rawText, validStickerData) {
 
       const code = normalizeStickerCode(`${prefix}${number}`)
 
-      if (!hasReliableCatalog || validCodes.has(code)) {
+      if (!hasCatalog || validCodes.has(code)) {
         extractedCodes.push(code)
       }
     }
-  }
+
+    const compact = normalizeRaw(source)
+    const compactMatch = compact.match(compactStartRegex)
+
+    if (compactMatch) {
+      const prefix = compactMatch[1]
+      const number = normalizeNumberLike(compactMatch[2])
+
+      if (number) {
+        const code = normalizeStickerCode(`${prefix}${number}`)
+
+        if (!hasCatalog || validCodes.has(code)) {
+          extractedCodes.push(code)
+        }
+      }
+    }
+  })
 
   return Array.from(new Set(extractedCodes))
 }
@@ -377,7 +424,7 @@ function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = OCR_SCALE, rota
     let value = gray
 
     if (mode === 'contrast') {
-      value = ((gray - avgGray) * 2.4) + avgGray
+      value = ((gray - avgGray) * 2.8) + avgGray
       value = Math.max(0, Math.min(255, value))
     }
 
@@ -449,38 +496,194 @@ async function runOcrAttempt(recognize, bitmap, zone, options = {}) {
   }
 }
 
+function detectLightStickerRegions(bitmap) {
+  const maxW = 360
+  const scale = Math.min(1, maxW / bitmap.width)
+  const w = Math.max(1, Math.floor(bitmap.width * scale))
+  const h = Math.max(1, Math.floor(bitmap.height * scale))
+
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+
+  const ctx = c.getContext('2d')
+  ctx.drawImage(bitmap, 0, 0, w, h)
+
+  const imageData = ctx.getImageData(0, 0, w, h)
+  const data = imageData.data
+  const visited = new Uint8Array(w * h)
+
+  function isStickerPixel(index) {
+    const i = index * 4
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const gray = Math.round((r * 0.299) + (g * 0.587) + (b * 0.114))
+    const chroma = max - min
+
+    return gray >= 82 && gray <= 245 && chroma <= 58
+  }
+
+  const components = []
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const start = y * w + x
+
+      if (visited[start] || !isStickerPixel(start)) continue
+
+      const stack = [start]
+      visited[start] = 1
+
+      let minX = x
+      let maxX = x
+      let minY = y
+      let maxY = y
+      let count = 0
+
+      while (stack.length) {
+        const current = stack.pop()
+        const cx = current % w
+        const cy = Math.floor(current / w)
+
+        count += 1
+
+        minX = Math.min(minX, cx)
+        maxX = Math.max(maxX, cx)
+        minY = Math.min(minY, cy)
+        maxY = Math.max(maxY, cy)
+
+        const neighbors = [
+          current - 1,
+          current + 1,
+          current - w,
+          current + w,
+        ]
+
+        neighbors.forEach(next => {
+          if (next < 0 || next >= visited.length) return
+
+          const nx = next % w
+          const ny = Math.floor(next / w)
+
+          if (Math.abs(nx - cx) + Math.abs(ny - cy) !== 1) return
+          if (visited[next] || !isStickerPixel(next)) return
+
+          visited[next] = 1
+          stack.push(next)
+        })
+      }
+
+      const boxW = maxX - minX + 1
+      const boxH = maxY - minY + 1
+      const area = boxW * boxH
+      const ratio = boxW / Math.max(1, boxH)
+
+      if (
+        count >= w * h * 0.015 &&
+        area >= w * h * 0.035 &&
+        ratio >= 0.75 &&
+        ratio <= 3.5
+      ) {
+        const expandX = Math.floor(boxW * 0.06)
+        const expandY = Math.floor(boxH * 0.06)
+
+        components.push({
+          x: Math.floor((minX - expandX) / scale),
+          y: Math.floor((minY - expandY) / scale),
+          width: Math.floor((boxW + expandX * 2) / scale),
+          height: Math.floor((boxH + expandY * 2) / scale),
+        })
+      }
+    }
+  }
+
+  return components
+    .map(region => clampZone(bitmap, region))
+    .filter(region => isReadableZone(bitmap, region))
+    .slice(0, 6)
+}
+
 function buildCodeCandidateAttempts(bitmap, zone) {
   const safeZone = clampZone(bitmap, zone)
+  const isSmallZone = (
+    safeZone.width <= bitmap.width * 0.42 &&
+    safeZone.height <= bitmap.height * 0.22
+  )
 
-  const topRightWide = relativeZone(safeZone, 0.45, 0.00, 0.53, 0.30)
-  const topRightTight = relativeZone(safeZone, 0.58, 0.00, 0.38, 0.22)
+  const attempts = []
 
-  const candidates = [
-    {
-      zone: topRightWide,
-      mode: 'contrast',
-      pageSegMode: 7,
-      rotate180: false,
-    },
-    {
-      zone: topRightWide,
+  if (isSmallZone) {
+    attempts.push({
+      zone: safeZone,
       mode: 'original',
       pageSegMode: 7,
       rotate180: false,
-    },
-    {
-      zone: topRightTight,
+    })
+
+    attempts.push({
+      zone: safeZone,
+      mode: 'contrast',
+      pageSegMode: 7,
+      rotate180: false,
+    })
+
+    attempts.push({
+      zone: safeZone,
+      mode: 'threshold',
+      pageSegMode: 7,
+      rotate180: false,
+    })
+
+    attempts.push({
+      zone: safeZone,
       mode: 'contrast',
       pageSegMode: 8,
       rotate180: false,
-    },
-  ]
+    })
+  }
 
-  return candidates.filter(candidate => isReadableZone(bitmap, candidate.zone))
+  const topRightWide = relativeZone(safeZone, 0.52, 0.00, 0.44, 0.22)
+  const topRightLower = relativeZone(safeZone, 0.52, 0.06, 0.44, 0.22)
+  const topRightTight = relativeZone(safeZone, 0.60, 0.02, 0.34, 0.16)
+
+  attempts.push({
+    zone: topRightWide,
+    mode: 'original',
+    pageSegMode: 7,
+    rotate180: false,
+  })
+
+  attempts.push({
+    zone: topRightWide,
+    mode: 'contrast',
+    pageSegMode: 7,
+    rotate180: false,
+  })
+
+  attempts.push({
+    zone: topRightLower,
+    mode: 'contrast',
+    pageSegMode: 7,
+    rotate180: false,
+  })
+
+  attempts.push({
+    zone: topRightTight,
+    mode: 'contrast',
+    pageSegMode: 8,
+    rotate180: false,
+  })
+
+  return attempts.filter(attempt => isReadableZone(bitmap, attempt.zone))
 }
 
 async function recognizeZone(recognize, bitmap, zone, zoneIndex, validStickerData) {
   const attempts = buildCodeCandidateAttempts(bitmap, zone)
+  const readings = []
 
   for (let i = 0; i < attempts.length; i += 1) {
     const attempt = attempts[i]
@@ -507,47 +710,54 @@ async function recognizeZone(recognize, bitmap, zone, zoneIndex, validStickerDat
     const extractedCodes = extractValidCodesFromText(result.text, validStickerData)
 
     if (extractedCodes.length > 0) {
-      return extractedCodes.map((code, codeIndex) => ({
-        id: `zone-${zoneIndex}-${i}-${codeIndex}`,
-        confidence: result.confidence,
-        rawText: code,
-        region: attempt.zone,
-        thumbUrl: workerCanvasToUrl(bitmap, attempt.zone),
-        manualCode: '',
-      }))
+      extractedCodes.forEach((code, codeIndex) => {
+        readings.push({
+          id: `zone-${zoneIndex}-${i}-${codeIndex}`,
+          confidence: result.confidence,
+          rawText: code,
+          region: attempt.zone,
+          thumbUrl: workerCanvasToUrl(bitmap, attempt.zone),
+          manualCode: '',
+        })
+      })
     }
   }
 
-  return []
+  return readings
 }
 
 function buildFallbackRegions(bitmap) {
   const { width, height } = bitmap
 
-  return uniqueZones([
-    // Bloque superior derecho específico donde suele estar el código.
+  const detectedStickerRegions = detectLightStickerRegions(bitmap)
+
+  const manualCodeRegions = [
+    // Para fotos como la que mandaste: código arriba derecha de la estampa.
+    {
+      x: Math.floor(width * 0.58),
+      y: Math.floor(height * 0.32),
+      width: Math.floor(width * 0.32),
+      height: Math.floor(height * 0.13),
+    },
+
+    {
+      x: Math.floor(width * 0.62),
+      y: Math.floor(height * 0.34),
+      width: Math.floor(width * 0.26),
+      height: Math.floor(height * 0.09),
+    },
+
     {
       x: Math.floor(width * 0.52),
-      y: Math.floor(height * 0.22),
+      y: Math.floor(height * 0.29),
       width: Math.floor(width * 0.40),
-      height: Math.floor(height * 0.20),
+      height: Math.floor(height * 0.22),
     },
+  ]
 
-    // Bloque derecho un poco más amplio.
-    {
-      x: Math.floor(width * 0.45),
-      y: Math.floor(height * 0.20),
-      width: Math.floor(width * 0.48),
-      height: Math.floor(height * 0.30),
-    },
-
-    // Centro: estampa completa aproximada.
-    {
-      x: Math.floor(width * 0.08),
-      y: Math.floor(height * 0.20),
-      width: Math.floor(width * 0.84),
-      height: Math.floor(height * 0.60),
-    },
+  return uniqueZones([
+    ...manualCodeRegions,
+    ...detectedStickerRegions,
   ]).filter(region => isReadableZone(bitmap, region))
 }
 
@@ -577,87 +787,25 @@ function dedupeReadings(readings) {
   return result
 }
 
-async function recognizeFullImageFallback(recognize, bitmap, validStickerData) {
-  const fullZone = {
-    x: 0,
-    y: 0,
-    width: bitmap.width,
-    height: bitmap.height,
-  }
-
-  const attempts = [
-    {
-      zone: fullZone,
-      mode: 'contrast',
-      pageSegMode: 11,
-      rotate180: false,
-    },
-    {
-      zone: fullZone,
-      mode: 'original',
-      pageSegMode: 11,
-      rotate180: false,
-    },
-  ]
-
-  let bestText = ''
-  let bestConfidence = 0
-
-  for (let i = 0; i < attempts.length; i += 1) {
-    const attempt = attempts[i]
-
-    // eslint-disable-next-line no-await-in-loop
-    const result = await runOcrAttempt(
-      recognize,
-      bitmap,
-      attempt.zone,
-      {
-        mode: attempt.mode,
-        pageSegMode: attempt.pageSegMode,
-        rotate180: attempt.rotate180,
-      }
+function pickBestReadings(readings) {
+  const clean = dedupeReadings(
+    readings.filter(reading =>
+      /^[A-Z]{3}\d{1,3}$/.test(normalizeStickerCode(reading.rawText))
     )
+  )
 
-    if (DEBUG_OCR && result.text) {
-      console.log(
-        `OCR fallback completo intento ${i} modo ${attempt.mode}:`,
-        result.text.replace(/\n+/g, ' ')
-      )
-    }
-
-    const extractedCodes = extractValidCodesFromText(result.text, validStickerData)
-
-    if (extractedCodes.length > 0) {
-      return extractedCodes.map((code, index) => ({
-        id: `fallback-full-${i}-${index}`,
-        confidence: result.confidence,
-        rawText: code,
-        region: attempt.zone,
-        thumbUrl: workerCanvasToUrl(bitmap, attempt.zone),
-        manualCode: '',
-      }))
-    }
-
-    if (result.text && result.confidence >= bestConfidence) {
-      bestText = result.text
-      bestConfidence = result.confidence
-    }
-  }
-
-  if (!bestText) {
+  if (!clean.length) {
     return []
   }
 
-  return [
-    {
-      id: 'fallback-full',
-      confidence: bestConfidence,
-      rawText: normalizeRaw(bestText),
-      region: fullZone,
-      thumbUrl: workerCanvasToUrl(bitmap, fullZone),
-      manualCode: '',
-    },
-  ]
+  return clean
+    .sort((a, b) => {
+      const aConfidence = Number(a.confidence || 0)
+      const bConfidence = Number(b.confidence || 0)
+
+      return bConfidence - aConfidence
+    })
+    .slice(0, 1)
 }
 
 export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
@@ -666,7 +814,7 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   if (DEBUG_OCR) {
     console.log('OCR validCodes:', Array.from(validStickerData.validCodes))
     console.log('OCR validPrefixes:', validStickerData.validPrefixes)
-    console.log('OCR hasReliableCatalog:', validStickerData.hasReliableCatalog)
+    console.log('OCR hasCatalog:', validStickerData.hasCatalog)
   }
 
   const primaryRegions = detectCodeLabelRegions(bitmap) || []
@@ -677,7 +825,9 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
     ...primaryRegions,
   ])
     .filter(region => isReadableZone(bitmap, region))
-    .slice(0, 4)
+    .slice(0, 6)
+
+  const allReadings = []
 
   for (let i = 0; i < allRegions.length; i += 1) {
     // eslint-disable-next-line no-await-in-loop
@@ -689,37 +839,20 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
       validStickerData
     )
 
-    const validDetected = zoneResults.filter(reading =>
-      /^[A-Z]{3}\d{1,3}$/.test(normalizeStickerCode(reading.rawText))
-    )
+    allReadings.push(...zoneResults)
 
-    // Si ya encontró un código, corta inmediatamente.
-    // Esto evita que siga leyendo basura como BEL1, PAN15 o MAR1.
-    if (validDetected.length > 0) {
-      const cleanReadings = dedupeReadings(validDetected)
+    const bestNow = pickBestReadings(allReadings)
 
+    if (bestNow.length > 0) {
       return {
-        grouped: classifyZoneReadings(cleanReadings, stickers),
+        grouped: classifyZoneReadings(bestNow, stickers),
         regions: primaryRegions,
       }
     }
   }
 
-  // Solo usa imagen completa si no encontró nada en las zonas importantes.
-  const finalReadings = await recognizeFullImageFallback(
-    recognize,
-    bitmap,
-    validStickerData
-  )
-
-  const cleanFinalReadings = dedupeReadings(
-    finalReadings.filter(reading =>
-      /^[A-Z]{3}\d{1,3}$/.test(normalizeStickerCode(reading.rawText))
-    )
-  )
-
   return {
-    grouped: classifyZoneReadings(cleanFinalReadings, stickers),
+    grouped: classifyZoneReadings([], stickers),
     regions: primaryRegions,
   }
 }

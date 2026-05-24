@@ -892,8 +892,6 @@ function App() {
       })
     })
     const stickerLabel = stickerLabelByCode[code] || code
-    setUndoPast((curr) => [{ collection: prevState, actionHistory }, ...curr].slice(0, HISTORY_MAX))
-    setUndoFuture([])
     setActionHistory((current) => isCurrentlyOwned
       ? { ...current, removedOwned: [`Quito ${stickerLabel}`, ...current.removedOwned].slice(0, HISTORY_MAX), missingAdded: [`Faltante agregada: ${stickerLabel}`, ...current.missingAdded].slice(0, HISTORY_MAX) }
       : { ...current, addedOwned: [`Agrego ${stickerLabel}`, ...current.addedOwned].slice(0, HISTORY_MAX), missingResolved: [`Corrección: ${stickerLabel}`, ...current.missingResolved].slice(0, HISTORY_MAX) })
@@ -918,8 +916,6 @@ function App() {
     })
 
     const stickerLabel = stickerLabelByCode[code] || code
-    setUndoPast((curr) => [{ collection: prevState, actionHistory }, ...curr].slice(0, HISTORY_MAX))
-    setUndoFuture([])
     setActionHistory((current) => ({ ...current, addedDuplicates: [`Agrego repetida ${stickerLabel}`, ...current.addedDuplicates].slice(0, HISTORY_MAX) }))
   }
 
@@ -949,8 +945,6 @@ function App() {
 
     if (currentDuplicates > 0) {
       const stickerLabel = stickerLabelByCode[code] || code
-      setUndoPast((curr) => [{ collection: prevState, actionHistory }, ...curr].slice(0, HISTORY_MAX))
-      setUndoFuture([])
       setActionHistory((current) => ({ ...current, removedDuplicates: [`Quito repetida ${stickerLabel}`, ...current.removedDuplicates].slice(0, HISTORY_MAX) }))
     }
   }
@@ -1050,23 +1044,6 @@ function App() {
     setCollection({})
     setActionHistory({ addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [] })
     setToast('Colección reiniciada.')
-  }
-
-  const handleUndo = () => {
-    if (!undoPast.length) return
-    const [last, ...rest] = undoPast
-    setUndoPast(rest)
-    setUndoFuture((current) => [{ collection, actionHistory }, ...current].slice(0, HISTORY_MAX))
-    setCollection(last.collection)
-    setActionHistory(last.actionHistory)
-  }
-  const handleRedo = () => {
-    if (!undoFuture.length) return
-    const [next, ...rest] = undoFuture
-    setUndoFuture(rest)
-    setUndoPast((current) => [{ collection, actionHistory }, ...current].slice(0, HISTORY_MAX))
-    setCollection(next.collection)
-    setActionHistory(next.actionHistory)
   }
 
   const pageProps = {
@@ -1178,10 +1155,6 @@ function App() {
           <SettingsPage
             collection={collection}
             actionHistory={actionHistory}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            canUndo={undoPast.length > 0}
-            canRedo={undoFuture.length > 0}
             onExportBackup={handleExportBackup}
             onImportBackup={handleImportBackup}
             onResetCollection={handleResetCollection}

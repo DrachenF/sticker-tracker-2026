@@ -3,10 +3,6 @@ import { useState } from 'react'
 function SettingsPage({
   collection,
   actionHistory,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
   onExportBackup,
   onImportBackup,
   onResetCollection,
@@ -119,13 +115,6 @@ function SettingsPage({
           >
             Reiniciar colección
           </button>
-        </div>
-      </section>
-
-      <section className="settings-card settings-card-soft">
-        <div className="settings-actions settings-actions-large">
-          <button type="button" className="action-button action-button-ghost" onClick={onUndo} disabled={!canUndo}>Deshacer</button>
-          <button type="button" className="action-button action-button-ghost" onClick={onRedo} disabled={!canRedo}>Rehacer</button>
         </div>
       </section>
 

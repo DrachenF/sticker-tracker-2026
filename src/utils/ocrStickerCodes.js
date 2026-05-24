@@ -1,134 +1,121 @@
-function normalizeRawToken(token) {
-  return String(token || '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value))
 }
 
-function buildTeamRanges(stickers) {
-  const rangeMap = {}
-
-  stickers.forEach((sticker) => {
-    const code = String(sticker.code || '').toUpperCase()
-    const match = code.match(/^([A-Z]{3})(\d{1,2})$/)
-    if (!match) {
-      return
-    }
-
-    const [, prefix, numberText] = match
-    const number = Number(numberText)
-
-    if (!Number.isFinite(number)) {
-      return
-    }
-
-    const current = rangeMap[prefix]
-
-    if (!current) {
-      rangeMap[prefix] = { min: number, max: number }
-      return
-    }
-
-    current.min = Math.min(current.min, number)
-    current.max = Math.max(current.max, number)
-  })
-
-  return rangeMap
+function normalizeCodeText(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
-function buildVariantCandidates(rawText, validPrefixes) {
-  const normalizedText = String(rawText || '').toUpperCase()
-  const compactText = normalizedText.replace(/[^A-Z0-9]/g, '')
-  const candidates = new Set()
+function extractStrictCodeCandidates(value) {
+  const normalized = normalizeCodeText(value)
+  return normalized.match(/[A-Z]{3}\d{1,2}/g) || []
+}
 
-  const directMatches = compactText.match(/[A-Z]{3}\d{1,2}/g) || []
-  directMatches.forEach((match) => candidates.add(normalizeRawToken(match)))
+function buildValidCodeSet(stickers) {
+  return new Set(stickers.map((item) => String(item.code || '').toUpperCase()))
+}
 
-  const withSpaceMatches = normalizedText.match(/[A-Z]{2,3}\s{1,3}\d{1,2}/g) || []
-  withSpaceMatches.forEach((match) => candidates.add(normalizeRawToken(match)))
+export function detectCodeLabelRegions(imageBitmap) {
+  const width = imageBitmap.width
+  const height = imageBitmap.height
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(imageBitmap, 0, 0)
 
-  const splitPairs = compactText.match(/[A-Z]{2}\d{1,2}/g) || []
-  splitPairs.forEach((pair) => {
-    const prefix2 = pair.slice(0, 2)
-    const number = pair.slice(2)
+  const regions = []
+  const samplesX = 8
+  const samplesY = 10
 
-    validPrefixes.forEach((prefix3) => {
-      if (prefix3.startsWith(prefix2)) {
-        candidates.add(`${prefix3}${number}`)
+  for (let gy = 0; gy < samplesY; gy += 1) {
+    for (let gx = 0; gx < samplesX; gx += 1) {
+      const cellX = Math.floor((gx / samplesX) * width)
+      const cellY = Math.floor((gy / samplesY) * height)
+      const w = Math.floor(width * 0.2)
+      const h = Math.floor(height * 0.075)
+      const x = clamp(cellX, 0, Math.max(0, width - w))
+      const y = clamp(cellY, 0, Math.max(0, height - h))
+
+      if (w < 34 || h < 10) continue
+      if (w > width * 0.38 || h > height * 0.15) continue
+      const ratio = w / h
+      if (ratio < 2 || ratio > 9) continue
+
+      const imgData = ctx.getImageData(x, y, w, h).data
+      let minLum = 255
+      let maxLum = 0
+      for (let i = 0; i < imgData.length; i += 4) {
+        const lum = (imgData[i] * 0.299) + (imgData[i + 1] * 0.587) + (imgData[i + 2] * 0.114)
+        minLum = Math.min(minLum, lum)
+        maxLum = Math.max(maxLum, lum)
       }
-    })
-  })
+      const contrast = maxLum - minLum
+      if (contrast < 48) continue
 
-  return [...candidates]
+      regions.push({ x, y, width: w, height: h, contrast })
+    }
+  }
+
+  return regions.sort((a, b) => b.contrast - a.contrast).slice(0, 40)
 }
 
-export function classifyDetectedCodes({ text, words = [], stickers, minConfidence = 60 }) {
-  const validCodeSet = new Set(stickers.map((item) => String(item.code || '').toUpperCase()))
-  const teamRanges = buildTeamRanges(stickers)
-  const validPrefixes = Object.keys(teamRanges)
-  const groupedByCode = new Map()
+function overlaps(a, b) {
+  const x1 = Math.max(a.x, b.x)
+  const y1 = Math.max(a.y, b.y)
+  const x2 = Math.min(a.x + a.width, b.x + b.width)
+  const y2 = Math.min(a.y + a.height, b.y + b.height)
+  return x2 > x1 && y2 > y1
+}
 
-  words.forEach((word) => {
-    const confidence = Number(word?.confidence ?? 0)
-    const variants = buildVariantCandidates(word?.text || '', validPrefixes)
-    variants.forEach((candidate) => {
-      if (!groupedByCode.has(candidate)) {
-        groupedByCode.set(candidate, [])
-      }
-      groupedByCode.get(candidate).push({ source: word?.text || '', confidence })
-    })
-  })
-
-  const fallbackVariants = buildVariantCandidates(text || '', validPrefixes)
-  fallbackVariants.forEach((candidate) => {
-    if (!groupedByCode.has(candidate)) {
-      groupedByCode.set(candidate, [{ source: candidate, confidence: 50 }])
+export function dedupeByZoneAndCode(entries) {
+  const picked = []
+  entries.forEach((item) => {
+    const existing = picked.find((current) => current.code === item.code && overlaps(current.region, item.region))
+    if (!existing) {
+      picked.push(item)
+      return
+    }
+    if (item.confidence > existing.confidence) {
+      const idx = picked.indexOf(existing)
+      picked[idx] = item
     }
   })
+  return picked
+}
 
+export function classifyZoneReadings(zoneReadings, stickers) {
+  const validCodeSet = buildValidCodeSet(stickers)
   const good = []
   const review = []
   const invalid = []
 
-  groupedByCode.forEach((hits, code) => {
-    const bestConfidence = Math.max(...hits.map((hit) => hit.confidence || 0), 0)
-    const prefixMatch = code.match(/^([A-Z]{3})(\d{1,2})$/)
+  zoneReadings.forEach((zoneItem) => {
+    const matches = extractStrictCodeCandidates(zoneItem.rawText)
+    const bestCandidate = matches[0] || ''
 
-    if (!prefixMatch) {
-      invalid.push({ code, reason: 'Formato inválido', confidence: bestConfidence })
+    if (!bestCandidate) {
+      invalid.push({ ...zoneItem, code: '', reason: 'No leído' })
       return
     }
 
-    const [, prefix, numberText] = prefixMatch
-    const number = Number(numberText)
-    const range = teamRanges[prefix]
-
-    if (!range) {
-      invalid.push({ code, reason: 'Prefijo no válido para este álbum', confidence: bestConfidence })
+    const code = normalizeCodeText(bestCandidate)
+    if (validCodeSet.has(code) && zoneItem.confidence >= 62) {
+      good.push({ ...zoneItem, code, status: 'Reconocido' })
       return
     }
 
-    if (number < range.min || number > range.max) {
-      invalid.push({ code, reason: `Número fuera de rango (${range.min}-${range.max})`, confidence: bestConfidence })
+    if (validCodeSet.has(code)) {
+      review.push({ ...zoneItem, code, reason: 'Confianza baja', status: 'Revisar' })
       return
     }
 
-    if (!validCodeSet.has(code)) {
-      review.push({ code, reason: 'Código cercano pero no exacto, revisar manualmente', confidence: bestConfidence })
-      return
-    }
-
-    if (bestConfidence >= minConfidence) {
-      good.push({ code, confidence: bestConfidence })
-    } else {
-      review.push({ code, reason: 'Confianza baja, revisar manualmente', confidence: bestConfidence })
-    }
+    review.push({ ...zoneItem, code, reason: 'Código no exacto', status: 'Revisar' })
   })
 
-  const sortByCode = (a, b) => a.code.localeCompare(b.code)
-
   return {
-    good: good.sort(sortByCode),
-    review: review.sort(sortByCode),
-    invalid: invalid.sort(sortByCode),
+    good: dedupeByZoneAndCode(good),
+    review: dedupeByZoneAndCode(review),
+    invalid: invalid.slice(0, 24),
   }
 }

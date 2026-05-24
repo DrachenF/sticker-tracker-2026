@@ -521,6 +521,8 @@ function App() {
   })
   const [undoPast, setUndoPast] = useState([])
   const [undoFuture, setUndoFuture] = useState([])
+  const handleUndo = () => {}
+  const handleRedo = () => {}
   const [layoutMetrics, setLayoutMetrics] = useState({
     headerHeight: 0,
     navHeight: 0,

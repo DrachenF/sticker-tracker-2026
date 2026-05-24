@@ -2,9 +2,9 @@ import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_DETECTOR = true
 
-const MAX_VISUAL_CANDIDATES = 30
-const MAX_OCR_TARGETS = 10
-const MAX_DEBUG_RESULTS = 22
+const MAX_VISUAL_CANDIDATES = 32
+const MAX_VISUAL_OCR_TARGETS = 10
+const MAX_DEBUG_RESULTS = 24
 
 const VALID_PREFIXES = [
   'FWC',
@@ -33,7 +33,6 @@ const STOP_WORDS = [
   'EVENTS',
   'DESIGNS',
   'LOGOS',
-  'COMPRUEBA',
   'ALBUM',
 ]
 
@@ -44,15 +43,8 @@ function clampZone(bitmap, zone) {
   const x = Math.max(0, Math.min(rawX, bitmap.width - 1))
   const y = Math.max(0, Math.min(rawY, bitmap.height - 1))
 
-  const width = Math.max(
-    1,
-    Math.min(Math.floor(zone?.width || 1), bitmap.width - x)
-  )
-
-  const height = Math.max(
-    1,
-    Math.min(Math.floor(zone?.height || 1), bitmap.height - y)
-  )
+  const width = Math.max(1, Math.min(Math.floor(zone?.width || 1), bitmap.width - x))
+  const height = Math.max(1, Math.min(Math.floor(zone?.height || 1), bitmap.height - y))
 
   return {
     ...zone,
@@ -74,12 +66,7 @@ function normalizeAngle(angle) {
   return Number(value.toFixed(1))
 }
 
-function isReadableZone(bitmap, zone) {
-  const safe = clampZone(bitmap, zone)
-  return safe.width >= 18 && safe.height >= 8
-}
-
-function expandZone(bitmap, zone, amountX = 0.10, amountY = 0.18) {
+function expandZone(bitmap, zone, amountX = 0.12, amountY = 0.22) {
   const safe = clampZone(bitmap, zone)
 
   const extraX = Math.floor(safe.width * amountX)
@@ -134,27 +121,15 @@ function getComponentAngle(component) {
 
 function createMaskClassifier(kind) {
   if (kind === 'light-pill') {
-    return ({ gray, chroma }) => (
-      gray >= 128 &&
-      gray <= 255 &&
-      chroma <= 78
-    )
+    return ({ gray, chroma }) => gray >= 126 && gray <= 255 && chroma <= 78
   }
 
   if (kind === 'dark-label') {
-    return ({ gray, chroma }) => (
-      gray >= 38 &&
-      gray <= 188 &&
-      chroma <= 78
-    )
+    return ({ gray, chroma }) => gray >= 35 && gray <= 190 && chroma <= 78
   }
 
   if (kind === 'neutral-panel') {
-    return ({ gray, chroma }) => (
-      gray >= 74 &&
-      gray <= 236 &&
-      chroma <= 84
-    )
+    return ({ gray, chroma }) => gray >= 72 && gray <= 236 && chroma <= 84
   }
 
   return () => false
@@ -163,17 +138,17 @@ function createMaskClassifier(kind) {
 function measureZoneStats(bitmap, zone) {
   const safe = clampZone(bitmap, zone)
 
-  const maxW = 140
+  const maxW = 150
   const scale = Math.min(1, maxW / safe.width)
 
   const w = Math.max(1, Math.floor(safe.width * scale))
   const h = Math.max(1, Math.floor(safe.height * scale))
 
-  const c = document.createElement('canvas')
-  c.width = w
-  c.height = h
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
 
-  const ctx = c.getContext('2d')
+  const ctx = canvas.getContext('2d')
 
   ctx.drawImage(
     bitmap,
@@ -236,9 +211,7 @@ function measureZoneStats(bitmap, zone) {
       const current = grays[y * w + x]
       const previous = grays[y * w + x - 1]
 
-      if (Math.abs(current - previous) >= 18) {
-        edgeCount += 1
-      }
+      if (Math.abs(current - previous) >= 18) edgeCount += 1
 
       comparisons += 1
     }
@@ -262,42 +235,40 @@ function scoreCandidate(bitmap, zone, kind, componentMeta = {}) {
 
   let score = 0
 
-  if (ratio >= 1.25 && ratio <= 10.8) score += 36
-  if (ratio >= 1.8 && ratio <= 7.0) score += 42
-  if (ratio >= 2.4 && ratio <= 5.8) score += 18
+  if (ratio >= 1.20 && ratio <= 11.5) score += 34
+  if (ratio >= 1.70 && ratio <= 7.5) score += 44
+  if (ratio >= 2.20 && ratio <= 6.2) score += 22
 
-  if (stats.coloredRatio <= 0.08) score += 80
-  else if (stats.coloredRatio <= 0.14) score += 50
-  else if (stats.coloredRatio <= 0.22) score += 12
+  if (stats.coloredRatio <= 0.08) score += 85
+  else if (stats.coloredRatio <= 0.14) score += 52
+  else if (stats.coloredRatio <= 0.22) score += 10
+  else score -= 210
+
+  if (stats.avgChroma <= 44) score += 60
+  else if (stats.avgChroma <= 66) score += 28
+  else if (stats.avgChroma <= 88) score -= 40
   else score -= 190
 
-  if (stats.avgChroma <= 44) score += 58
-  else if (stats.avgChroma <= 64) score += 28
-  else if (stats.avgChroma <= 84) score -= 40
-  else score -= 180
-
-  if (stats.stdGray >= 7 && stats.stdGray <= 105) score += 30
-  if (stats.edgeRatio >= 0.010 && stats.edgeRatio <= 0.70) score += 36
+  if (stats.stdGray >= 7 && stats.stdGray <= 110) score += 32
+  if (stats.edgeRatio >= 0.010 && stats.edgeRatio <= 0.72) score += 38
   if (stats.edgeRatio < 0.008) score -= 95
-  if (stats.stdGray < 6) score -= 75
+  if (stats.stdGray < 6) score -= 80
 
   if (kind.includes('light')) {
-    if (stats.avgGray >= 120) score += 34
-    if (stats.brightRatio >= 0.18) score += 18
+    if (stats.avgGray >= 118) score += 35
+    if (stats.brightRatio >= 0.16) score += 18
   }
 
   if (kind.includes('dark')) {
-    if (stats.avgGray >= 38 && stats.avgGray <= 190) score += 34
-    if (stats.darkRatio >= 0.05 || stats.brightRatio >= 0.05) score += 18
+    if (stats.avgGray >= 35 && stats.avgGray <= 195) score += 35
+    if (stats.darkRatio >= 0.04 || stats.brightRatio >= 0.04) score += 18
   }
 
-  if (componentMeta.fillRatio >= 0.14 && componentMeta.fillRatio <= 0.96) {
-    score += 20
-  }
+  if (componentMeta.fillRatio >= 0.12 && componentMeta.fillRatio <= 0.97) score += 18
 
-  if (stats.coloredRatio >= 0.30) score -= 260
-  if (stats.avgChroma >= 105) score -= 260
-  if (ratio < 0.85 || ratio > 13.5) score -= 160
+  if (stats.coloredRatio >= 0.30) score -= 270
+  if (stats.avgChroma >= 105) score -= 270
+  if (ratio < 0.80 || ratio > 14) score -= 170
 
   return {
     score: Math.round(score),
@@ -319,14 +290,14 @@ function componentToCandidates(bitmap, component, scale, kind, imageArea) {
   const originalH = Math.floor(boxH / scale)
 
   if (originalW < 18 || originalH < 7) return []
-  if (originalW > bitmap.width * 0.42) return []
-  if (originalH > bitmap.height * 0.18) return []
-  if (ratio < 0.85 || ratio > 12.5) return []
-  if (fillRatio < 0.10) return []
+  if (originalW > bitmap.width * 0.45) return []
+  if (originalH > bitmap.height * 0.20) return []
+  if (ratio < 0.80 || ratio > 13) return []
+  if (fillRatio < 0.09) return []
 
   const areaRatio = (originalW * originalH) / Math.max(1, imageArea)
 
-  if (areaRatio < 0.000035 || areaRatio > 0.060) return []
+  if (areaRatio < 0.00003 || areaRatio > 0.065) return []
 
   const base = clampZone(bitmap, {
     x: originalX,
@@ -340,33 +311,31 @@ function componentToCandidates(bitmap, component, scale, kind, imageArea) {
 
   const variants = [
     {
-      ...expandZone(bitmap, base, 0.14, 0.28),
+      ...expandZone(bitmap, base, 0.16, 0.30),
       kind: `box-${type}-tight`,
-      score: type === 'light' ? 780 : type === 'dark' ? 760 : 700,
+      score: type === 'light' ? 800 : type === 'dark' ? 780 : 700,
     },
     {
-      ...expandZone(bitmap, base, 0.30, 0.38),
+      ...expandZone(bitmap, base, 0.34, 0.42),
       kind: `box-${type}-medium`,
-      score: type === 'light' ? 735 : type === 'dark' ? 720 : 665,
+      score: type === 'light' ? 755 : type === 'dark' ? 735 : 665,
     },
     {
       ...clampZone(bitmap, {
         ...base,
-        x: base.x - Math.floor(base.width * 0.52),
-        y: base.y - Math.floor(base.height * 0.46),
-        width: base.width + Math.floor(base.width * 1.95),
-        height: base.height + Math.floor(base.height * 0.92),
+        x: base.x - Math.floor(base.width * 0.62),
+        y: base.y - Math.floor(base.height * 0.50),
+        width: base.width + Math.floor(base.width * 2.20),
+        height: base.height + Math.floor(base.height * 1.00),
       }),
       kind: `box-${type}-wide`,
-      score: type === 'light' ? 700 : type === 'dark' ? 690 : 630,
+      score: type === 'light' ? 715 : type === 'dark' ? 705 : 630,
     },
   ]
 
   return variants
     .map(candidate => {
-      const visual = scoreCandidate(bitmap, candidate, candidate.kind, {
-        fillRatio,
-      })
+      const visual = scoreCandidate(bitmap, candidate, candidate.kind, { fillRatio })
 
       if (visual.score < 20) return null
 
@@ -391,17 +360,17 @@ function componentToCandidates(bitmap, component, scale, kind, imageArea) {
 }
 
 function detectComponents(bitmap, kind) {
-  const maxW = 980
+  const maxW = 900
   const scale = Math.min(1, maxW / bitmap.width)
 
   const w = Math.max(1, Math.floor(bitmap.width * scale))
   const h = Math.max(1, Math.floor(bitmap.height * scale))
 
-  const c = document.createElement('canvas')
-  c.width = w
-  c.height = h
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
 
-  const ctx = c.getContext('2d')
+  const ctx = canvas.getContext('2d')
   ctx.drawImage(bitmap, 0, 0, w, h)
 
   const imageData = ctx.getImageData(0, 0, w, h)
@@ -502,9 +471,7 @@ function detectComponents(bitmap, kind) {
       const candidates = componentToCandidates(bitmap, component, scale, kind, imageArea)
 
       candidates.forEach(candidate => {
-        if (candidate && isReadableZone(bitmap, candidate)) {
-          results.push(candidate)
-        }
+        results.push(candidate)
       })
     }
   }
@@ -532,7 +499,7 @@ function regionIoU(a, b) {
   const ih = Math.max(0, iy2 - iy1)
 
   const intersection = iw * ih
-  const union = (a.width * a.height) + (b.width * b.height) - intersection
+  const union = a.width * a.height + b.width * b.height - intersection
 
   if (!union) return 0
 
@@ -580,7 +547,7 @@ function shouldAddRotatedCopy(candidate) {
 
   const angle = Math.abs(normalizeAngle(candidate.angle || 0))
 
-  return angle >= 7 && angle <= 30
+  return angle >= 8 && angle <= 28
 }
 
 function addRotatedCopies(candidates) {
@@ -593,7 +560,7 @@ function addRotatedCopies(candidates) {
       ...candidate,
       kind: `${candidate.kind}-ROT`,
       rotateThumb: true,
-      score: candidate.score + 75,
+      score: candidate.score + 60,
       angle: normalizeAngle(candidate.angle || 0),
     })
   })
@@ -603,61 +570,62 @@ function addRotatedCopies(candidates) {
 
 function makeFixedSingleFallbacks(bitmap) {
   const { width, height } = bitmap
+  const nonFwcPrefixes = VALID_PREFIXES.filter(prefix => prefix !== 'FWC')
 
   return [
     {
-      x: Math.floor(width * 0.575),
-      y: Math.floor(height * 0.285),
-      width: Math.floor(width * 0.390),
-      height: Math.floor(height * 0.135),
+      x: Math.floor(width * 0.555),
+      y: Math.floor(height * 0.275),
+      width: Math.floor(width * 0.430),
+      height: Math.floor(height * 0.155),
       kind: 'fixed-single-fwc-superwide',
-      score: 1920,
+      score: 2000,
       allowedPrefixes: ['FWC'],
     },
     {
-      x: Math.floor(width * 0.595),
-      y: Math.floor(height * 0.300),
-      width: Math.floor(width * 0.340),
-      height: Math.floor(height * 0.112),
+      x: Math.floor(width * 0.585),
+      y: Math.floor(height * 0.292),
+      width: Math.floor(width * 0.365),
+      height: Math.floor(height * 0.125),
       kind: 'fixed-single-fwc-wide',
-      score: 1900,
+      score: 1980,
       allowedPrefixes: ['FWC'],
     },
     {
-      x: Math.floor(width * 0.625),
-      y: Math.floor(height * 0.310),
-      width: Math.floor(width * 0.285),
-      height: Math.floor(height * 0.088),
+      x: Math.floor(width * 0.610),
+      y: Math.floor(height * 0.302),
+      width: Math.floor(width * 0.310),
+      height: Math.floor(height * 0.105),
       kind: 'fixed-single-fwc-tight',
-      score: 1840,
+      score: 1940,
       allowedPrefixes: ['FWC'],
     },
     {
-      x: Math.floor(width * 0.545),
-      y: Math.floor(height * 0.128),
-      width: Math.floor(width * 0.420),
-      height: Math.floor(height * 0.130),
-      kind: 'fixed-single-arg-superwide',
-      score: 1920,
-      allowedPrefixes: VALID_PREFIXES.filter(prefix => prefix !== 'FWC'),
+      x: Math.floor(width * 0.520),
+      y: Math.floor(height * 0.120),
+      width: Math.floor(width * 0.465),
+      height: Math.floor(height * 0.145),
+      kind: 'fixed-single-code-superwide',
+      score: 2000,
+      allowedPrefixes: nonFwcPrefixes,
     },
     {
-      x: Math.floor(width * 0.580),
-      y: Math.floor(height * 0.142),
-      width: Math.floor(width * 0.350),
-      height: Math.floor(height * 0.100),
-      kind: 'fixed-single-arg-wide',
-      score: 1900,
-      allowedPrefixes: VALID_PREFIXES.filter(prefix => prefix !== 'FWC'),
+      x: Math.floor(width * 0.565),
+      y: Math.floor(height * 0.138),
+      width: Math.floor(width * 0.380),
+      height: Math.floor(height * 0.115),
+      kind: 'fixed-single-code-wide',
+      score: 1980,
+      allowedPrefixes: nonFwcPrefixes,
     },
     {
-      x: Math.floor(width * 0.620),
-      y: Math.floor(height * 0.153),
-      width: Math.floor(width * 0.285),
-      height: Math.floor(height * 0.080),
-      kind: 'fixed-single-arg-tight',
-      score: 1840,
-      allowedPrefixes: VALID_PREFIXES.filter(prefix => prefix !== 'FWC'),
+      x: Math.floor(width * 0.610),
+      y: Math.floor(height * 0.150),
+      width: Math.floor(width * 0.310),
+      height: Math.floor(height * 0.090),
+      kind: 'fixed-single-code-tight',
+      score: 1940,
+      allowedPrefixes: nonFwcPrefixes,
     },
   ]
     .map(zone => {
@@ -682,7 +650,6 @@ function makeFixedSingleFallbacks(bitmap) {
         },
       }
     })
-    .filter(zone => isReadableZone(bitmap, zone))
 }
 
 function filterVisualCandidate(candidate) {
@@ -691,16 +658,11 @@ function filterVisualCandidate(candidate) {
   const stats = candidate.meta || {}
   const ratio = candidate.width / Math.max(1, candidate.height)
 
-  const coloredRatio = Number(stats.coloredRatio || 0)
-  const avgChroma = Number(stats.avgChroma || 0)
-  const edgeRatio = Number(stats.edgeRatio || 0)
-  const stdGray = Number(stats.stdGray || 0)
-
-  if (coloredRatio >= 0.24) return false
-  if (avgChroma >= 90) return false
-  if (edgeRatio < 0.006) return false
-  if (stdGray < 5) return false
-  if (ratio < 0.85 || ratio > 13.5) return false
+  if (Number(stats.coloredRatio || 0) >= 0.24) return false
+  if (Number(stats.avgChroma || 0) >= 92) return false
+  if (Number(stats.edgeRatio || 0) < 0.006) return false
+  if (Number(stats.stdGray || 0) < 5) return false
+  if (ratio < 0.80 || ratio > 14) return false
 
   return true
 }
@@ -725,8 +687,7 @@ function detectVisualCandidates(bitmap) {
     ...lightCandidates,
     ...darkCandidates,
     ...neutralCandidates,
-  ])
-    .filter(filterVisualCandidate)
+  ]).filter(filterVisualCandidate)
 
   const withRotation = uniqueZones([
     ...detected,
@@ -738,14 +699,14 @@ function detectVisualCandidates(bitmap) {
     .slice(0, MAX_VISUAL_CANDIDATES)
 }
 
-function makeNormalCanvas(bitmap, candidate, scale = 4) {
+function makeNormalCanvas(bitmap, candidate, scale = 5) {
   const safe = clampZone(bitmap, candidate)
 
-  const c = document.createElement('canvas')
-  c.width = Math.max(1, Math.floor(safe.width * scale))
-  c.height = Math.max(1, Math.floor(safe.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.floor(safe.width * scale))
+  canvas.height = Math.max(1, Math.floor(safe.height * scale))
 
-  const ctx = c.getContext('2d')
+  const ctx = canvas.getContext('2d')
   ctx.imageSmoothingEnabled = false
 
   ctx.drawImage(
@@ -756,20 +717,20 @@ function makeNormalCanvas(bitmap, candidate, scale = 4) {
     safe.height,
     0,
     0,
-    c.width,
-    c.height
+    canvas.width,
+    canvas.height
   )
 
-  return c
+  return canvas
 }
 
-function makeRotatedCanvas(bitmap, candidate, scale = 3.4) {
+function makeRotatedCanvas(bitmap, candidate, scale = 4) {
   const safe = clampZone(bitmap, candidate)
   const angle = normalizeAngle(candidate.angle || 0)
 
   if (!angle) return makeNormalCanvas(bitmap, candidate, scale)
 
-  const padding = Math.ceil(Math.max(safe.width, safe.height) * 0.34)
+  const padding = Math.ceil(Math.max(safe.width, safe.height) * 0.38)
   const sourceX = Math.max(0, safe.x - padding)
   const sourceY = Math.max(0, safe.y - padding)
   const sourceW = Math.min(safe.width + padding * 2, bitmap.width - sourceX)
@@ -777,16 +738,16 @@ function makeRotatedCanvas(bitmap, candidate, scale = 3.4) {
 
   const diagonal = Math.ceil(Math.sqrt(sourceW * sourceW + sourceH * sourceH))
 
-  const c = document.createElement('canvas')
-  c.width = Math.max(1, Math.floor(diagonal * scale))
-  c.height = Math.max(1, Math.floor(diagonal * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.floor(diagonal * scale))
+  canvas.height = Math.max(1, Math.floor(diagonal * scale))
 
-  const ctx = c.getContext('2d')
+  const ctx = canvas.getContext('2d')
   ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, c.width, c.height)
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.imageSmoothingEnabled = false
 
-  ctx.translate(c.width / 2, c.height / 2)
+  ctx.translate(canvas.width / 2, canvas.height / 2)
   ctx.rotate((-angle * Math.PI) / 180)
 
   ctx.drawImage(
@@ -801,51 +762,121 @@ function makeRotatedCanvas(bitmap, candidate, scale = 3.4) {
     sourceH * scale
   )
 
-  return c
+  return canvas
 }
 
-function canvasToUrl(canvas) {
-  return canvas.toDataURL('image/jpeg', 0.94)
-}
-
-function candidateToCanvas(bitmap, candidate, scale = 4) {
+function candidateToCanvas(bitmap, candidate, scale = 5) {
   return candidate.rotateThumb
     ? makeRotatedCanvas(bitmap, candidate, scale)
     : makeNormalCanvas(bitmap, candidate, scale)
 }
 
-function preprocessCanvasForOcr(canvas, mode = 'normal') {
-  const c = document.createElement('canvas')
-  c.width = canvas.width
-  c.height = canvas.height
+function canvasToUrl(canvas) {
+  return canvas.toDataURL('image/png')
+}
 
-  const ctx = c.getContext('2d')
-  ctx.drawImage(canvas, 0, 0)
+function makeOcrSheetFromCrop(cropCanvas) {
+  const targetW = 640
+  const targetH = 150
+  const rows = 3
+  const gap = 14
 
-  const imageData = ctx.getImageData(0, 0, c.width, c.height)
-  const data = imageData.data
+  const sheet = document.createElement('canvas')
+  sheet.width = targetW
+  sheet.height = targetH * rows + gap * (rows - 1)
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i]
-    const g = data[i + 1]
-    const b = data[i + 2]
+  const sheetCtx = sheet.getContext('2d')
+  sheetCtx.fillStyle = '#ffffff'
+  sheetCtx.fillRect(0, 0, sheet.width, sheet.height)
 
-    let gray = Math.round(r * 0.299 + g * 0.587 + b * 0.114)
+  const normalized = document.createElement('canvas')
+  normalized.width = targetW
+  normalized.height = targetH
 
-    if (mode === 'contrast') {
-      gray = Math.round((gray - 128) * 1.9 + 128)
-    }
+  const nctx = normalized.getContext('2d')
+  nctx.fillStyle = '#ffffff'
+  nctx.fillRect(0, 0, targetW, targetH)
 
-    gray = Math.max(0, Math.min(255, gray))
+  const scale = Math.min(targetW / cropCanvas.width, targetH / cropCanvas.height)
+  const drawW = Math.max(1, Math.floor(cropCanvas.width * scale))
+  const drawH = Math.max(1, Math.floor(cropCanvas.height * scale))
+  const dx = Math.floor((targetW - drawW) / 2)
+  const dy = Math.floor((targetH - drawH) / 2)
 
-    data[i] = gray
-    data[i + 1] = gray
-    data[i + 2] = gray
+  nctx.imageSmoothingEnabled = false
+  nctx.drawImage(cropCanvas, dx, dy, drawW, drawH)
+
+  const originalImageData = nctx.getImageData(0, 0, targetW, targetH)
+  const originalData = originalImageData.data
+
+  let totalGray = 0
+  let count = 0
+
+  for (let i = 0; i < originalData.length; i += 4) {
+    const gray = Math.round(originalData[i] * 0.299 + originalData[i + 1] * 0.587 + originalData[i + 2] * 0.114)
+    totalGray += gray
+    count += 1
   }
 
-  ctx.putImageData(imageData, 0, 0)
+  const avgGray = totalGray / Math.max(1, count)
 
-  return c
+  function makeRow(mode) {
+    const row = document.createElement('canvas')
+    row.width = targetW
+    row.height = targetH
+
+    const rctx = row.getContext('2d')
+    rctx.fillStyle = '#ffffff'
+    rctx.fillRect(0, 0, targetW, targetH)
+
+    const imageData = new ImageData(
+      new Uint8ClampedArray(originalImageData.data),
+      targetW,
+      targetH
+    )
+
+    const data = imageData.data
+
+    for (let i = 0; i < data.length; i += 4) {
+      const grayRaw = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114)
+
+      let gray = grayRaw
+
+      if (mode === 'contrast') {
+        gray = Math.round((grayRaw - 128) * 2.05 + 128)
+        gray = Math.max(0, Math.min(255, gray))
+      }
+
+      if (mode === 'darkText') {
+        gray = grayRaw < avgGray - 8 ? 0 : 255
+      }
+
+      if (mode === 'lightText') {
+        gray = grayRaw > avgGray + 8 ? 0 : 255
+      }
+
+      data[i] = gray
+      data[i + 1] = gray
+      data[i + 2] = gray
+      data[i + 3] = 255
+    }
+
+    rctx.putImageData(imageData, 0, 0)
+
+    return row
+  }
+
+  const rowsCanvas = [
+    makeRow('contrast'),
+    makeRow('darkText'),
+    makeRow('lightText'),
+  ]
+
+  rowsCanvas.forEach((row, index) => {
+    sheetCtx.drawImage(row, 0, index * (targetH + gap))
+  })
+
+  return sheet
 }
 
 function cleanOcrText(text) {
@@ -858,9 +889,7 @@ function cleanOcrText(text) {
 }
 
 function normalizeCode(code) {
-  return String(code || '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
+  return String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
 function repairNumber(raw) {
@@ -891,8 +920,7 @@ function getAllowedPrefixes(candidate) {
     return candidate.allowedPrefixes
   }
 
-  if (kind.includes('box-light')) return ['FWC']
-  if (kind.includes('fixed-single-fwc')) return ['FWC']
+  if (kind.includes('box-light') || kind.includes('fixed-single-fwc')) return ['FWC']
 
   return VALID_PREFIXES
 }
@@ -900,8 +928,8 @@ function getAllowedPrefixes(candidate) {
 function extractExactCodes(cleanText, candidate) {
   const allowedPrefixes = getAllowedPrefixes(candidate)
   const prefixPart = allowedPrefixes.join('|')
-  const found = []
   const joined = cleanText.replace(/\s+/g, '')
+  const found = []
 
   const spacedRegex = new RegExp(`\\b(${prefixPart})\\s*([0-9OQDILZS]{1,2})\\b`, 'g')
   let spacedMatch = spacedRegex.exec(cleanText)
@@ -936,16 +964,12 @@ function extractControlledFuzzyCodes(cleanText, candidate) {
   const stopWordCount = countStopWords(cleanText)
   const found = []
 
-  const kind = String(candidate.kind || '').toLowerCase()
-  const canUseFuzzy = candidate.forced || kind.includes('box-light') || kind.includes('box-dark')
-
-  if (!canUseFuzzy) return found
   if (stopWordCount >= 2 && !candidate.forced) return found
 
   if (allowedPrefixes.includes('FWC')) {
     const fwcRegexes = [
-      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV|FW|WC)([0-9OQDILZS]{1,2})/,
-      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV|FW|WC)\s+([0-9OQDILZS]{1,2})/,
+      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV|FVVV|FW|WC)\s*([0-9OQDILZS]{1,2})/,
+      /(?:F\s*W\s*C|F\s*V\s*C|F\s*I\s*C)\s*([0-9OQDILZS]{1,2})/,
     ]
 
     fwcRegexes.forEach(regex => {
@@ -956,33 +980,30 @@ function extractControlledFuzzyCodes(cleanText, candidate) {
     })
   }
 
-  if (allowedPrefixes.includes('ARG')) {
-    const argRegexes = [
-      /(?:ARG|ABG|AKG|ARC|RG|AG)([0-9OQDILZS]{1,2})/,
-      /(?:ARG|ABG|AKG|ARC|RG|AG)\s+([0-9OQDILZS]{1,2})/,
-    ]
-
-    argRegexes.forEach(regex => {
-      const match = cleanText.match(regex) || joined.match(regex)
-      const number = repairNumber(match?.[1] || '')
-
-      if (isValidNumber(number)) found.push(`ARG${number}`)
-    })
+  const fuzzyMap = {
+    ARG: ['ARG', 'ABG', 'AKG', 'ARC', 'AR6', 'RG', 'AG'],
+    PAR: ['PAR', 'P4R', 'FAR', 'PAB', 'P4B'],
+    POR: ['POR', 'P0R', 'POB', 'P0B'],
+    BRA: ['BRA', '8RA', 'BBA'],
+    MEX: ['MEX', 'HEX', 'MFX'],
+    USA: ['USA', 'U5A'],
+    CAN: ['CAN', 'C4N'],
+    SUI: ['SUI', 'SU1'],
+    KOR: ['KOR', 'K0R'],
+    RSA: ['RSA', 'R5A'],
   }
 
-  if (allowedPrefixes.includes('PAR')) {
-    const parRegexes = [
-      /(?:PAR|P4R|FAR|PAB|P4B)([0-9OQDILZS]{1,2})/,
-      /(?:PAR|P4R|FAR|PAB|P4B)\s+([0-9OQDILZS]{1,2})/,
-    ]
+  Object.entries(fuzzyMap).forEach(([prefix, variants]) => {
+    if (!allowedPrefixes.includes(prefix)) return
 
-    parRegexes.forEach(regex => {
-      const match = cleanText.match(regex) || joined.match(regex)
-      const number = repairNumber(match?.[1] || '')
+    const variantPart = variants.join('|')
+    const regex = new RegExp(`(?:${variantPart})\\s*([0-9OQDILZS]{1,2})`)
 
-      if (isValidNumber(number)) found.push(`PAR${number}`)
-    })
-  }
+    const match = cleanText.match(regex) || joined.match(regex)
+    const number = repairNumber(match?.[1] || '')
+
+    if (isValidNumber(number)) found.push(`${prefix}${number}`)
+  })
 
   return found
 }
@@ -1001,51 +1022,47 @@ function extractCodesFromText(text, candidate) {
 }
 
 async function recognizeCandidate(recognize, bitmap, candidate, index) {
-  const originalCanvas = candidateToCanvas(bitmap, candidate, candidate.forced ? 5 : 4)
-
-  const modes = candidate.forced || index < 4
-    ? ['contrast', 'normal']
-    : ['contrast']
+  const cropCanvas = candidateToCanvas(bitmap, candidate, candidate.forced ? 6 : 5)
+  const ocrSheet = makeOcrSheetFromCrop(cropCanvas)
+  const imageDataUrl = canvasToUrl(ocrSheet)
 
   let best = {
     codes: [],
     rawText: '',
     confidence: 0,
-    thumbUrl: canvasToUrl(originalCanvas),
+    thumbUrl: canvasToUrl(cropCanvas),
   }
 
-  for (let i = 0; i < modes.length; i += 1) {
-    const processedCanvas = preprocessCanvasForOcr(originalCanvas, modes[i])
-    const imageDataUrl = canvasToUrl(processedCanvas)
+  try {
+    const result = await recognize(imageDataUrl, 'eng', {
+      rotateAuto: false,
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
+      tessedit_pageseg_mode: '6',
+    })
 
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      const result = await recognize(imageDataUrl, 'eng', {
-        rotateAuto: false,
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
-        tessedit_pageseg_mode: '8',
-      })
+    const rawText = String(result?.data?.text || '')
+    const confidence = Number(result?.data?.confidence ?? 0)
+    const codes = extractCodesFromText(rawText, candidate)
 
-      const rawText = String(result?.data?.text || '')
-      const confidence = Number(result?.data?.confidence ?? 0)
-      const codes = extractCodesFromText(rawText, candidate)
-
-      if (
-        codes.length > best.codes.length ||
-        (codes.length === best.codes.length && confidence > best.confidence)
-      ) {
-        best = {
-          codes,
-          rawText,
-          confidence,
-          thumbUrl: canvasToUrl(originalCanvas),
-        }
-      }
-
-      if (codes.length) break
-    } catch (error) {
-      console.warn('OCR candidate failed:', error)
+    best = {
+      codes,
+      rawText,
+      confidence,
+      thumbUrl: canvasToUrl(cropCanvas),
     }
+  } catch (error) {
+    console.warn('OCR candidate failed:', error)
+  }
+
+  if (DEBUG_DETECTOR) {
+    console.log(`OCR ZONA ${index + 1}`, {
+      kind: candidate.kind,
+      allowedPrefixes: getAllowedPrefixes(candidate),
+      raw: cleanOcrText(best.rawText),
+      codes: best.codes,
+      confidence: best.confidence,
+      candidate,
+    })
   }
 
   return best
@@ -1073,7 +1090,7 @@ function buildDebugLabel(candidate, index, detection) {
     meta.ratio !== undefined ? `r ${meta.ratio}` : '',
     meta.coloredRatio !== undefined ? `color ${meta.coloredRatio}` : '',
     meta.avgChroma !== undefined ? `chroma ${meta.avgChroma}` : '',
-    raw ? `raw ${raw}` : '',
+    raw ? `raw ${raw}` : 'raw VACIO',
   ]
     .filter(Boolean)
     .join(' | ')
@@ -1088,37 +1105,24 @@ function buildReading(bitmap, candidate, index, detection) {
     confidence: codes.length
       ? Math.max(50, Math.round(candidate.ocrConfidence || 0))
       : Math.max(1, 99 - index),
-    rawText: codes.length ? codes.join(' ') : '',
-    debugText: debugLabel,
+    rawText: codes.length ? codes.join(' ') : debugLabel,
     region: clampZone(bitmap, candidate),
     thumbUrl: candidate.thumbUrl || canvasToUrl(candidateToCanvas(bitmap, candidate, 3)),
     manualCode: '',
   }
 }
 
-function isLikelySingleImage(visualCandidates) {
-  return visualCandidates.length <= 16
-}
-
 function pickOcrTargets(visualCandidates, fixedCandidates) {
-  const likelySingle = isLikelySingleImage(visualCandidates)
+  const fixedFirst = fixedCandidates.slice(0, 6)
+  const visualFirst = visualCandidates.slice(0, MAX_VISUAL_OCR_TARGETS)
 
-  if (likelySingle) {
-    return uniqueZones([
-      ...fixedCandidates,
-      ...visualCandidates.slice(0, 4),
-    ]).slice(0, MAX_OCR_TARGETS)
-  }
-
-  return uniqueZones([
-    ...visualCandidates.slice(0, 8),
-    ...fixedCandidates.slice(0, 2),
-  ]).slice(0, MAX_OCR_TARGETS)
+  return uniqueZones([...fixedFirst, ...visualFirst])
+    .slice(0, 14)
 }
 
 export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
-  const visualCandidates = detectVisualCandidates(bitmap)
   const fixedCandidates = makeFixedSingleFallbacks(bitmap)
+  const visualCandidates = detectVisualCandidates(bitmap)
   const ocrTargets = pickOcrTargets(visualCandidates, fixedCandidates)
 
   const enriched = []
@@ -1147,10 +1151,7 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
       thumbUrl: canvasToUrl(candidateToCanvas(bitmap, candidate, 3)),
     }))
 
-  const sorted = [
-    ...enriched,
-    ...untouched,
-  ].sort((a, b) => {
+  const sorted = [...enriched, ...untouched].sort((a, b) => {
     const aCode = a.codes?.length ? 1 : 0
     const bCode = b.codes?.length ? 1 : 0
 
@@ -1167,23 +1168,27 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   const finalCandidates = sorted.slice(0, MAX_DEBUG_RESULTS)
 
   const detection = {
-    mode: isLikelySingleImage(visualCandidates) ? 'SINGLE' : 'MULTI',
+    mode: 'DEBUG_OCR_SHEET',
     visualCount: visualCandidates.length,
     fixedCount: fixedCandidates.length,
     ocrCount: ocrTargets.length,
   }
 
   if (DEBUG_DETECTOR) {
-    console.log('DEBUG OFFICIAL PREFIX OCR DETECTOR:', {
+    console.log('DEBUG OCR SHEET DETECTOR:', {
       prefixes: VALID_PREFIXES,
       visualCount: visualCandidates.length,
       fixedCount: fixedCandidates.length,
       ocrCount: ocrTargets.length,
+      detectedCodes: finalCandidates
+        .filter(candidate => candidate.codes?.length)
+        .map(candidate => candidate.codes)
+        .flat(),
       candidates: finalCandidates.map(candidate => ({
         kind: candidate.kind,
         allowedPrefixes: getAllowedPrefixes(candidate),
         codes: candidate.codes,
-        raw: candidate.ocrRawText,
+        raw: cleanOcrText(candidate.ocrRawText),
         confidence: candidate.ocrConfidence,
         score: candidate.score,
         x: candidate.x,

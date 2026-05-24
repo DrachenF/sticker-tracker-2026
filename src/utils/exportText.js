@@ -10,21 +10,31 @@ function buildFlagEmojiFromTeamCode(teamCode) {
   }
 
   const normalizedCode = teamCode.toLowerCase()
+  const threeToTwoFlagCode = {
+    alg: 'dz', arg: 'ar', aus: 'au', aut: 'at', bel: 'be', bih: 'ba', bra: 'br', can: 'ca',
+    civ: 'ci', cod: 'cd', col: 'co', cpv: 'cv', cro: 'hr', cuw: 'cw', cze: 'cz', ecu: 'ec',
+    egy: 'eg', eng: 'gb-eng', esp: 'es', fra: 'fr', ger: 'de', gha: 'gh', hai: 'ht',
+    irn: 'ir', irq: 'iq', jor: 'jo', jpn: 'jp', kor: 'kr', ksa: 'sa', mar: 'ma', mex: 'mx',
+    ned: 'nl', nor: 'no', nzl: 'nz', pan: 'pa', par: 'py', por: 'pt', qat: 'qa', rsa: 'za',
+    sco: 'gb-sct', sen: 'sn', sui: 'ch', swe: 'se', tun: 'tn', tur: 'tr', uru: 'uy',
+    usa: 'us', uzb: 'uz',
+  }
+  const resolvedCode = threeToTwoFlagCode[normalizedCode] || normalizedCode
   const customFlags = {
     'gb-eng': '🏴',
     'gb-sct': '🏴',
     'gb-wls': '🏴',
   }
 
-  if (customFlags[normalizedCode]) {
-    return customFlags[normalizedCode]
+  if (customFlags[resolvedCode]) {
+    return customFlags[resolvedCode]
   }
 
-  if (!/^[a-z]{2}$/.test(normalizedCode)) {
+  if (!/^[a-z]{2}$/.test(resolvedCode)) {
     return ''
   }
 
-  return normalizedCode
+  return resolvedCode
     .toUpperCase()
     .split('')
     .map((char) => String.fromCodePoint(127397 + char.charCodeAt(0)))
@@ -54,12 +64,12 @@ export function buildMissingText(stickers) {
   const groupNames = Object.keys(grouped)
   if (groupNames.length === 1) {
     const groupName = groupNames[0]
-    return withShareIntro(`Me faltan *${groupName.toUpperCase()}*:\r\n${grouped[groupName].map(c => `- ${c}`).join('\r\n')}`)
+    return withShareIntro(`Me faltan ${groupName.toUpperCase()}:\r\n${grouped[groupName].map(c => `- ${c}`).join('\r\n')}`)
   }
 
   const lines = ['Me faltan:']
   for (const [groupName, codes] of Object.entries(grouped)) {
-    lines.push(`*${groupName.toUpperCase()}*:\r\n${codes.map(c => `- ${c}`).join('\r\n')}`)
+    lines.push(`${groupName.toUpperCase()}:\r\n${codes.map(c => `- ${c}`).join('\r\n')}`)
   }
 
   return withShareIntro(lines.join('\r\n\r\n'))

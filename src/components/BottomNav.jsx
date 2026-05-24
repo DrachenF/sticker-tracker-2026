@@ -37,6 +37,14 @@ function NavIcon({ id }) {
           <path d="M9 5h8a2 2 0 0 1 2 2v10" />
         </svg>
       )
+    case 'camera':
+      return (
+        <svg {...commonProps}>
+          <rect x="4" y="7" width="16" height="12" rx="2.5" />
+          <circle cx="12" cy="13" r="3.2" />
+          <path d="M9 7l1.2-2h3.6L15 7" />
+        </svg>
+      )
     case 'settings':
       return (
         <svg {...commonProps}>

@@ -5,6 +5,7 @@ import DuplicatesPage from './pages/DuplicatesPage'
 import HomePage from './pages/HomePage'
 import MissingPage from './pages/MissingPage'
 import SettingsPage from './pages/SettingsPage'
+import CameraAddPage from './pages/CameraAddPage'
 import {
   exportCollectionBackup,
   importCollectionBackup,
@@ -57,6 +58,7 @@ const tabs = [
   { id: 'album', label: 'Mi álbum' },
   { id: 'missing', label: 'Faltantes' },
   { id: 'duplicates', label: 'Repetidas' },
+  { id: 'camera', label: 'Cámara' },
   { id: 'settings', label: 'Ajustes' },
 ]
 
@@ -997,6 +999,17 @@ function App() {
     })
   }
 
+
+
+  const handleApplyDetectedSticker = (code) => {
+    if (collection[code]?.owned) {
+      handleIncrementDuplicates(code)
+      return
+    }
+
+    handleToggleOwned(code)
+  }
+
   const handleCopyText = async (text, successMessage) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -1177,6 +1190,8 @@ function App() {
     }
 
     switch (activeTab) {
+      case 'camera':
+        return <CameraAddPage stickers={stickers} onApplyDetectedSticker={handleApplyDetectedSticker} />
       case 'album':
         return <AlbumPage {...pageProps} />
       case 'missing':

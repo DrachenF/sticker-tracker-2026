@@ -2,8 +2,19 @@ import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_DETECTOR = true
 
-const MAX_SINGLE_CANDIDATES = 12
-const MAX_MULTI_CANDIDATES = 26
+const MAX_VISUAL_CANDIDATES = 42
+const MAX_OCR_CANDIDATES = 18
+const MAX_DEBUG_RESULTS = 26
+
+const VALID_PREFIXES = [
+  'FWC',
+  'MEX', 'RSA', 'KOR', 'CZE', 'CAN', 'BIH', 'QAT', 'SUI', 'BRA', 'MAR', 'HAI',
+  'SCO', 'USA', 'PAR', 'TUR', 'ARG', 'BOL', 'CHI', 'COL', 'ECU', 'PER', 'URU',
+  'VEN', 'AUT', 'BEL', 'CRO', 'DEN', 'ENG', 'ESP', 'FRA', 'GER', 'HUN', 'ITA',
+  'NED', 'POL', 'POR', 'ROU', 'SRB', 'SVK', 'UKR', 'CRC', 'GUA', 'HON', 'JAM',
+  'PAN', 'SLV', 'ALG', 'BFA', 'CMR', 'CIV', 'EGY', 'GHA', 'MLI', 'NGA', 'SEN',
+  'TUN', 'AUS', 'IRN', 'IRQ', 'JPN', 'KSA', 'UAE', 'UZB', 'NZL'
+]
 
 function clampZone(bitmap, zone) {
   const rawX = Math.floor(zone?.x || 0)
@@ -31,11 +42,6 @@ function clampZone(bitmap, zone) {
   }
 }
 
-function isReadableZone(bitmap, zone) {
-  const safe = clampZone(bitmap, zone)
-  return safe.width >= 18 && safe.height >= 8
-}
-
 function normalizeAngle(angle) {
   let value = Number(angle || 0)
 
@@ -47,12 +53,12 @@ function normalizeAngle(angle) {
   return Number(value.toFixed(1))
 }
 
-function shouldAddRotatedCopy(angle) {
-  const safe = Math.abs(normalizeAngle(angle))
-  return safe >= 7 && safe <= 30
+function isReadableZone(bitmap, zone) {
+  const safe = clampZone(bitmap, zone)
+  return safe.width >= 18 && safe.height >= 8
 }
 
-function expandZone(bitmap, zone, amountX = 0.08, amountY = 0.12) {
+function expandZone(bitmap, zone, amountX = 0.10, amountY = 0.18) {
   const safe = clampZone(bitmap, zone)
 
   const extraX = Math.floor(safe.width * amountX)
@@ -64,19 +70,6 @@ function expandZone(bitmap, zone, amountX = 0.08, amountY = 0.12) {
     y: safe.y - extraY,
     width: safe.width + extraX * 2,
     height: safe.height + extraY * 2,
-  })
-}
-
-function relativeZone(bitmap, parent, rx, ry, rw, rh, kind, score) {
-  return clampZone(bitmap, {
-    x: Math.floor(parent.x + parent.width * rx),
-    y: Math.floor(parent.y + parent.height * ry),
-    width: Math.floor(parent.width * rw),
-    height: Math.floor(parent.height * rh),
-    kind,
-    score,
-    angle: parent.angle || 0,
-    parentBody: parent,
   })
 }
 
@@ -96,34 +89,6 @@ function getPixelInfo(data, index) {
     gray: Math.round((r * 0.299) + (g * 0.587) + (b * 0.114)),
     chroma: max - min,
   }
-}
-
-function createMaskClassifier(kind) {
-  if (kind === 'sticker-body') {
-    return ({ gray, chroma }) => (
-      gray >= 92 &&
-      gray <= 248 &&
-      chroma <= 105
-    )
-  }
-
-  if (kind === 'light-code-pill') {
-    return ({ gray, chroma }) => (
-      gray >= 135 &&
-      gray <= 255 &&
-      chroma <= 75
-    )
-  }
-
-  if (kind === 'dark-code-box') {
-    return ({ gray, chroma }) => (
-      gray >= 42 &&
-      gray <= 180 &&
-      chroma <= 75
-    )
-  }
-
-  return () => false
 }
 
 function getComponentAngle(component) {
@@ -146,10 +111,41 @@ function getComponentAngle(component) {
   return normalizeAngle(angleDeg)
 }
 
+function createMaskClassifier(kind) {
+  if (kind === 'light-pill') {
+    // Fondo claro/blanco de FWC2, FWC3, FWC6.
+    return ({ gray, chroma }) => (
+      gray >= 128 &&
+      gray <= 255 &&
+      chroma <= 78
+    )
+  }
+
+  if (kind === 'dark-label') {
+    // Caja gris/oscura de ARG17, PAR1.
+    return ({ gray, chroma }) => (
+      gray >= 38 &&
+      gray <= 188 &&
+      chroma <= 78
+    )
+  }
+
+  if (kind === 'neutral-panel') {
+    // Paneles grises donde suele estar el código.
+    return ({ gray, chroma }) => (
+      gray >= 74 &&
+      gray <= 236 &&
+      chroma <= 84
+    )
+  }
+
+  return () => false
+}
+
 function measureZoneStats(bitmap, zone) {
   const safe = clampZone(bitmap, zone)
 
-  const maxW = 120
+  const maxW = 140
   const scale = Math.min(1, maxW / safe.width)
 
   const w = Math.max(1, Math.floor(safe.width * scale))
@@ -241,46 +237,53 @@ function measureZoneStats(bitmap, zone) {
   }
 }
 
-function scoreSmallCodeCandidate(bitmap, zone, kind, fillRatio = 0) {
+function scoreCandidate(bitmap, zone, kind, componentMeta = {}) {
   const safe = clampZone(bitmap, zone)
   const stats = measureZoneStats(bitmap, safe)
   const ratio = safe.width / Math.max(1, safe.height)
 
   let score = 0
 
-  if (ratio >= 1.4 && ratio <= 9.5) score += 30
-  if (ratio >= 2.0 && ratio <= 6.8) score += 30
+  // Forma esperada: rectángulo horizontal.
+  if (ratio >= 1.25 && ratio <= 10.8) score += 36
+  if (ratio >= 1.8 && ratio <= 7.0) score += 42
+  if (ratio >= 2.4 && ratio <= 5.8) score += 18
 
-  if (stats.stdGray >= 7 && stats.stdGray <= 95) score += 22
-  if (stats.edgeRatio >= 0.012 && stats.edgeRatio <= 0.70) score += 28
+  // Debe tener bajo color: blanco/gris/negro.
+  if (stats.coloredRatio <= 0.10) score += 70
+  else if (stats.coloredRatio <= 0.16) score += 42
+  else if (stats.coloredRatio <= 0.24) score += 12
+  else score -= 170
 
-  if (stats.coloredRatio <= 0.12) score += 58
-  if (stats.avgChroma <= 60) score += 36
+  if (stats.avgChroma <= 48) score += 48
+  else if (stats.avgChroma <= 68) score += 24
+  else if (stats.avgChroma <= 86) score -= 35
+  else score -= 160
+
+  // Debe tener letras/números, no mancha lisa.
+  if (stats.stdGray >= 7 && stats.stdGray <= 105) score += 28
+  if (stats.edgeRatio >= 0.010 && stats.edgeRatio <= 0.70) score += 34
+  if (stats.edgeRatio < 0.008) score -= 90
+  if (stats.stdGray < 6) score -= 70
 
   if (kind.includes('light')) {
-    if (stats.avgGray >= 125) score += 32
-    if (stats.brightRatio >= 0.18) score += 16
+    if (stats.avgGray >= 120) score += 30
+    if (stats.brightRatio >= 0.18) score += 18
   }
 
   if (kind.includes('dark')) {
-    if (stats.avgGray >= 42 && stats.avgGray <= 185) score += 32
-    if (stats.darkRatio >= 0.08 || stats.brightRatio >= 0.06) score += 16
+    if (stats.avgGray >= 38 && stats.avgGray <= 190) score += 30
+    if (stats.darkRatio >= 0.05 || stats.brightRatio >= 0.05) score += 18
   }
 
-  if (fillRatio >= 0.18 && fillRatio <= 0.92) score += 20
+  if (componentMeta.fillRatio >= 0.14 && componentMeta.fillRatio <= 0.96) {
+    score += 20
+  }
 
-  // Penalizaciones agresivas contra mantel/flor/fondo.
-  if (stats.coloredRatio >= 0.12) score -= 180
-  if (stats.coloredRatio >= 0.18) score -= 260
-  if (stats.avgChroma >= 70) score -= 160
-  if (stats.avgChroma >= 90) score -= 240
-
-  // Debe tener textura de letras, no solo una mancha.
-  if (stats.edgeRatio < 0.012) score -= 140
-  if (stats.stdGray < 7) score -= 120
-
-  // Debe parecer cajita/cápsula horizontal.
-  if (ratio < 1.25 || ratio > 10.5) score -= 140
+  // Castigos fuertes contra mantel/flor/fondo.
+  if (stats.coloredRatio >= 0.30) score -= 240
+  if (stats.avgChroma >= 105) score -= 240
+  if (ratio < 0.85 || ratio > 13.5) score -= 150
 
   return {
     score: Math.round(score),
@@ -289,82 +292,7 @@ function scoreSmallCodeCandidate(bitmap, zone, kind, fillRatio = 0) {
   }
 }
 
-function scoreBodyCandidate(bitmap, zone, fillRatio = 0, areaRatio = 0) {
-  const safe = clampZone(bitmap, zone)
-  const stats = measureZoneStats(bitmap, safe)
-  const ratio = safe.width / Math.max(1, safe.height)
-
-  let score = 0
-
-  if (ratio >= 0.35 && ratio <= 3.4) score += 35
-  if (stats.coloredRatio <= 0.20) score += 35
-  if (stats.avgChroma <= 70) score += 25
-  if (stats.avgGray >= 105 && stats.avgGray <= 225) score += 25
-  if (fillRatio >= 0.14) score += 25
-
-  score += Math.min(90, areaRatio * 260)
-
-  if (stats.coloredRatio >= 0.35) score -= 90
-  if (stats.avgChroma >= 100) score -= 80
-  if (ratio < 0.25 || ratio > 4.8) score -= 90
-
-  return {
-    score: Math.round(score),
-    stats,
-    ratio: Number(ratio.toFixed(2)),
-  }
-}
-
-function componentToBody(bitmap, component, scale, imageArea) {
-  const boxW = component.maxX - component.minX + 1
-  const boxH = component.maxY - component.minY + 1
-  const area = boxW * boxH
-  const fillRatio = component.count / Math.max(1, area)
-
-  const originalX = Math.floor(component.minX / scale)
-  const originalY = Math.floor(component.minY / scale)
-  const originalW = Math.floor(boxW / scale)
-  const originalH = Math.floor(boxH / scale)
-
-  const ratio = originalW / Math.max(1, originalH)
-  const areaRatio = (originalW * originalH) / Math.max(1, imageArea)
-
-  if (originalW < bitmap.width * 0.10) return null
-  if (originalH < bitmap.height * 0.055) return null
-  if (originalW > bitmap.width * 0.96) return null
-  if (originalH > bitmap.height * 0.96) return null
-
-  if (ratio < 0.25 || ratio > 4.8) return null
-  if (fillRatio < 0.11) return null
-  if (areaRatio < 0.010 || areaRatio > 0.75) return null
-
-  const base = clampZone(bitmap, {
-    x: originalX,
-    y: originalY,
-    width: originalW,
-    height: originalH,
-  })
-
-  const visual = scoreBodyCandidate(bitmap, base, fillRatio, areaRatio)
-
-  if (visual.score < 45) return null
-
-  return {
-    ...expandZone(bitmap, base, 0.01, 0.01),
-    kind: 'body',
-    angle: normalizeAngle(getComponentAngle(component)),
-    score: 300 + visual.score,
-    meta: {
-      ratio: Number(ratio.toFixed(2)),
-      fillRatio: Number(fillRatio.toFixed(2)),
-      area: Number(areaRatio.toFixed(4)),
-      visual: visual.score,
-      ...visual.stats,
-    },
-  }
-}
-
-function componentToSmallCodeCandidates(bitmap, component, scale, kind, imageArea) {
+function componentToCandidates(bitmap, component, scale, kind, imageArea) {
   const boxW = component.maxX - component.minX + 1
   const boxH = component.maxY - component.minY + 1
   const area = boxW * boxH
@@ -376,16 +304,15 @@ function componentToSmallCodeCandidates(bitmap, component, scale, kind, imageAre
   const originalW = Math.floor(boxW / scale)
   const originalH = Math.floor(boxH / scale)
 
-  if (originalW < 22 || originalH < 8) return []
-  if (originalW > bitmap.width * 0.34) return []
-  if (originalH > bitmap.height * 0.14) return []
-
-  if (ratio < 1.0 || ratio > 10.5) return []
-  if (fillRatio < 0.15) return []
+  if (originalW < 18 || originalH < 7) return []
+  if (originalW > bitmap.width * 0.42) return []
+  if (originalH > bitmap.height * 0.18) return []
+  if (ratio < 0.85 || ratio > 12.5) return []
+  if (fillRatio < 0.10) return []
 
   const areaRatio = (originalW * originalH) / Math.max(1, imageArea)
 
-  if (areaRatio < 0.00004 || areaRatio > 0.045) return []
+  if (areaRatio < 0.000035 || areaRatio > 0.060) return []
 
   const base = clampZone(bitmap, {
     x: originalX,
@@ -395,46 +322,49 @@ function componentToSmallCodeCandidates(bitmap, component, scale, kind, imageAre
   })
 
   const angle = normalizeAngle(getComponentAngle(component))
-  const type = kind === 'light-code-pill' ? 'light' : 'dark'
-
-  const tight = expandZone(bitmap, base, 0.18, 0.34)
-
-  const wider = clampZone(bitmap, {
-    ...base,
-    x: base.x - Math.floor(base.width * 0.42),
-    y: base.y - Math.floor(base.height * 0.42),
-    width: base.width + Math.floor(base.width * 1.85),
-    height: base.height + Math.floor(base.height * 0.84),
-  })
+  const type = kind === 'light-pill' ? 'light' : kind === 'dark-label' ? 'dark' : 'neutral'
 
   const variants = [
     {
-      ...tight,
-      kind: `label-${type}-tight`,
-      angle,
-      rotateThumb: false,
-      score: type === 'light' ? 580 : 560,
+      ...expandZone(bitmap, base, 0.12, 0.25),
+      kind: `box-${type}-tight`,
+      score: type === 'light' ? 760 : type === 'dark' ? 740 : 700,
     },
     {
-      ...wider,
-      kind: `label-${type}-wide`,
-      angle,
-      rotateThumb: false,
-      score: type === 'light' ? 540 : 525,
+      ...expandZone(bitmap, base, 0.26, 0.34),
+      kind: `box-${type}-medium`,
+      score: type === 'light' ? 720 : type === 'dark' ? 705 : 665,
+    },
+    {
+      ...clampZone(bitmap, {
+        ...base,
+        x: base.x - Math.floor(base.width * 0.45),
+        y: base.y - Math.floor(base.height * 0.42),
+        width: base.width + Math.floor(base.width * 1.75),
+        height: base.height + Math.floor(base.height * 0.84),
+      }),
+      kind: `box-${type}-wide`,
+      score: type === 'light' ? 680 : type === 'dark' ? 675 : 630,
     },
   ]
 
   return variants
     .map(candidate => {
-      const visual = scoreSmallCodeCandidate(bitmap, candidate, candidate.kind, fillRatio)
+      const visual = scoreCandidate(bitmap, candidate, candidate.kind, {
+        fillRatio,
+      })
 
-      if (visual.score < 35) return null
+      if (visual.score < 20) return null
 
       return {
         ...candidate,
+        angle,
+        rotateThumb: false,
+        forced: false,
         score: candidate.score + visual.score,
         meta: {
-          ratio: Number(ratio.toFixed(2)),
+          originalRatio: Number(ratio.toFixed(2)),
+          ratio: visual.ratio,
           fillRatio: Number(fillRatio.toFixed(2)),
           area: Number(areaRatio.toFixed(4)),
           visual: visual.score,
@@ -447,7 +377,7 @@ function componentToSmallCodeCandidates(bitmap, component, scale, kind, imageAre
 }
 
 function detectComponents(bitmap, kind) {
-  const maxW = kind === 'sticker-body' ? 700 : 950
+  const maxW = 980
   const scale = Math.min(1, maxW / bitmap.width)
 
   const w = Math.max(1, Math.floor(bitmap.width * scale))
@@ -555,21 +485,13 @@ function detectComponents(bitmap, kind) {
         sumXY,
       }
 
-      if (kind === 'sticker-body') {
-        const body = componentToBody(bitmap, component, scale, imageArea)
+      const candidates = componentToCandidates(bitmap, component, scale, kind, imageArea)
 
-        if (body && isReadableZone(bitmap, body)) {
-          results.push(body)
+      candidates.forEach(candidate => {
+        if (candidate && isReadableZone(bitmap, candidate)) {
+          results.push(candidate)
         }
-      } else {
-        const codeCandidates = componentToSmallCodeCandidates(bitmap, component, scale, kind, imageArea)
-
-        codeCandidates.forEach(candidate => {
-          if (candidate && isReadableZone(bitmap, candidate)) {
-            results.push(candidate)
-          }
-        })
-      }
+      })
     }
   }
 
@@ -613,7 +535,9 @@ function removeOverlappingRegions(regions, maxOverlap = 0.52) {
       return regionIoU(existing, region) > maxOverlap
     })
 
-    if (!overlaps) kept.push(region)
+    if (!overlaps) {
+      kept.push(region)
+    }
   })
 
   return kept
@@ -639,243 +563,115 @@ function uniqueZones(zones) {
   })
 }
 
-function isLikelySinglePhoto(bitmap, bodies) {
-  if (!bodies.length) return false
+function shouldAddRotatedCopy(candidate) {
+  if (candidate.forced) return false
 
-  const sorted = [...bodies].sort((a, b) => b.score - a.score)
-  const first = sorted[0]
-  const second = sorted[1]
+  const angle = Math.abs(normalizeAngle(candidate.angle || 0))
 
-  const firstArea = (first.width * first.height) / Math.max(1, bitmap.width * bitmap.height)
-  const secondArea = second
-    ? (second.width * second.height) / Math.max(1, bitmap.width * bitmap.height)
-    : 0
-
-  if (firstArea >= 0.14 && secondArea <= 0.07) return true
-  if (firstArea >= 0.18 && firstArea / Math.max(0.001, secondArea) >= 1.75) return true
-
-  return false
-}
-
-function getMainBody(bitmap, bodies) {
-  if (!bodies.length) {
-    return {
-      x: Math.floor(bitmap.width * 0.08),
-      y: Math.floor(bitmap.height * 0.18),
-      width: Math.floor(bitmap.width * 0.84),
-      height: Math.floor(bitmap.height * 0.64),
-      angle: 0,
-      kind: 'fallback-body',
-      score: 100,
-    }
-  }
-
-  return [...bodies].sort((a, b) => b.score - a.score)[0]
-}
-
-function makeSingleCropsFromBody(bitmap, body) {
-  const ratio = body.width / Math.max(1, body.height)
-  const isHorizontalSticker = ratio >= 1.05
-
-  const crops = []
-  const baseScore = 2200
-
-  const common = [
-    {
-      name: 'code-exact',
-      rx: 0.600,
-      ry: 0.000,
-      rw: 0.345,
-      rh: 0.135,
-      score: baseScore + 160,
-    },
-    {
-      name: 'code-tight',
-      rx: 0.635,
-      ry: 0.015,
-      rw: 0.285,
-      rh: 0.095,
-      score: baseScore + 140,
-    },
-    {
-      name: 'code-wide',
-      rx: 0.535,
-      ry: 0.000,
-      rw: 0.435,
-      rh: 0.165,
-      score: baseScore + 120,
-    },
-    {
-      name: 'code-extra-wide',
-      rx: 0.485,
-      ry: 0.000,
-      rw: 0.500,
-      rh: 0.185,
-      score: baseScore + 80,
-    },
-  ]
-
-  common.forEach(item => {
-    const crop = relativeZone(
-      bitmap,
-      body,
-      item.rx,
-      item.ry,
-      item.rw,
-      item.rh,
-      `single-body-${isHorizontalSticker ? 'horizontal' : 'vertical'}-${item.name}`,
-      item.score
-    )
-
-    crops.push({
-      ...expandZone(bitmap, crop, 0.03, 0.08),
-      forced: true,
-      rotateThumb: false,
-      angle: 0,
-      meta: {
-        bodyRatio: Number(ratio.toFixed(2)),
-      },
-    })
-  })
-
-  return crops.filter(crop => isReadableZone(bitmap, crop))
-}
-
-function makeFixedSingleFallbacks(bitmap) {
-  const { width, height } = bitmap
-
-  return [
-    {
-      x: Math.floor(width * 0.570),
-      y: Math.floor(height * 0.305),
-      width: Math.floor(width * 0.360),
-      height: Math.floor(height * 0.105),
-      kind: 'fixed-fwc-wide',
-      score: 1950,
-    },
-    {
-      x: Math.floor(width * 0.620),
-      y: Math.floor(height * 0.318),
-      width: Math.floor(width * 0.285),
-      height: Math.floor(height * 0.080),
-      kind: 'fixed-fwc-tight',
-      score: 1920,
-    },
-    {
-      x: Math.floor(width * 0.555),
-      y: Math.floor(height * 0.105),
-      width: Math.floor(width * 0.370),
-      height: Math.floor(height * 0.125),
-      kind: 'fixed-arg-wide',
-      score: 1950,
-    },
-    {
-      x: Math.floor(width * 0.600),
-      y: Math.floor(height * 0.130),
-      width: Math.floor(width * 0.300),
-      height: Math.floor(height * 0.095),
-      kind: 'fixed-arg-tight',
-      score: 1920,
-    },
-  ]
-    .map(zone => ({
-      ...clampZone(bitmap, zone),
-      forced: true,
-      rotateThumb: false,
-      angle: 0,
-    }))
-    .filter(zone => isReadableZone(bitmap, zone))
-}
-
-function makeMultiCropsFromBodies(bitmap, bodies) {
-  const crops = []
-
-  const sortedBodies = [...bodies]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 12)
-
-  sortedBodies.forEach((body, index) => {
-    const bodyRatio = body.width / Math.max(1, body.height)
-
-    const variants = [
-      {
-        name: 'top-right-wide',
-        rx: 0.500,
-        ry: 0.000,
-        rw: 0.490,
-        rh: 0.205,
-        score: 1300,
-      },
-      {
-        name: 'top-right-tight',
-        rx: 0.585,
-        ry: 0.010,
-        rw: 0.365,
-        rh: 0.145,
-        score: 1340,
-      },
-      {
-        name: 'top-right-small',
-        rx: 0.635,
-        ry: 0.020,
-        rw: 0.285,
-        rh: 0.110,
-        score: 1320,
-      },
-    ]
-
-    variants.forEach(variant => {
-      const crop = relativeZone(
-        bitmap,
-        body,
-        variant.rx,
-        variant.ry,
-        variant.rw,
-        variant.rh,
-        `multi-body${index + 1}-${variant.name}`,
-        variant.score + Math.round(body.score || 0)
-      )
-
-      crops.push({
-        ...expandZone(bitmap, crop, 0.04, 0.10),
-        forced: false,
-        rotateThumb: false,
-        angle: normalizeAngle(body.angle || 0),
-        parentBody: body,
-        meta: {
-          bodyRatio: Number(bodyRatio.toFixed(2)),
-          bodyScore: Math.round(body.score || 0),
-        },
-      })
-    })
-  })
-
-  return crops.filter(crop => isReadableZone(bitmap, crop))
+  return angle >= 7 && angle <= 30
 }
 
 function addRotatedCopies(candidates) {
   const copies = []
 
   candidates.forEach(candidate => {
-    if (candidate.forced) return
-
-    const angle = normalizeAngle(candidate.angle || 0)
-
-    if (!shouldAddRotatedCopy(angle)) return
+    if (!shouldAddRotatedCopy(candidate)) return
 
     copies.push({
       ...candidate,
       kind: `${candidate.kind}-ROT`,
       rotateThumb: true,
-      angle,
-      score: candidate.score + 110,
+      score: candidate.score + 85,
+      angle: normalizeAngle(candidate.angle || 0),
     })
   })
 
   return copies
 }
 
-function filterNoise(candidate) {
+function makeFixedSingleFallbacks(bitmap) {
+  const { width, height } = bitmap
+
+  // Son backups para tus fotos solitarias.
+  // No dependen del color y ayudan cuando el detector no encuentra bien la caja.
+  return [
+    // FWC2 horizontal: varios cortes cercanos.
+    {
+      x: Math.floor(width * 0.590),
+      y: Math.floor(height * 0.295),
+      width: Math.floor(width * 0.340),
+      height: Math.floor(height * 0.115),
+      kind: 'fixed-single-fwc-wide',
+      score: 1900,
+    },
+    {
+      x: Math.floor(width * 0.625),
+      y: Math.floor(height * 0.307),
+      width: Math.floor(width * 0.285),
+      height: Math.floor(height * 0.090),
+      kind: 'fixed-single-fwc-tight',
+      score: 1860,
+    },
+    {
+      x: Math.floor(width * 0.540),
+      y: Math.floor(height * 0.280),
+      width: Math.floor(width * 0.420),
+      height: Math.floor(height * 0.145),
+      kind: 'fixed-single-fwc-superwide',
+      score: 1820,
+    },
+
+    // ARG17 vertical: varios cortes cercanos.
+    {
+      x: Math.floor(width * 0.585),
+      y: Math.floor(height * 0.145),
+      width: Math.floor(width * 0.330),
+      height: Math.floor(height * 0.095),
+      kind: 'fixed-single-arg-wide',
+      score: 1900,
+    },
+    {
+      x: Math.floor(width * 0.620),
+      y: Math.floor(height * 0.155),
+      width: Math.floor(width * 0.280),
+      height: Math.floor(height * 0.078),
+      kind: 'fixed-single-arg-tight',
+      score: 1860,
+    },
+    {
+      x: Math.floor(width * 0.545),
+      y: Math.floor(height * 0.132),
+      width: Math.floor(width * 0.400),
+      height: Math.floor(height * 0.120),
+      kind: 'fixed-single-arg-superwide',
+      score: 1820,
+    },
+  ]
+    .map(zone => {
+      const safe = clampZone(bitmap, zone)
+      const visual = scoreCandidate(
+        bitmap,
+        safe,
+        zone.kind.includes('arg') ? 'fixed-dark' : 'fixed-light'
+      )
+
+      return {
+        ...safe,
+        forced: true,
+        rotateThumb: false,
+        angle: 0,
+        score: zone.score + visual.score,
+        meta: {
+          visual: visual.score,
+          ratio: visual.ratio,
+          ...visual.stats,
+        },
+      }
+    })
+    .filter(zone => isReadableZone(bitmap, zone))
+}
+
+function filterVisualCandidate(candidate) {
   if (candidate.forced) return true
 
   const stats = candidate.meta || {}
@@ -886,97 +682,52 @@ function filterNoise(candidate) {
   const edgeRatio = Number(stats.edgeRatio || 0)
   const stdGray = Number(stats.stdGray || 0)
 
-  // Quitar mantel, flor, fondo azul, verde, amarillo, rojo, etc.
-  if (coloredRatio >= 0.16) return false
-  if (avgChroma >= 72) return false
+  // Filtro fuerte: fuera mantel/flor/fondos de color.
+  if (coloredRatio >= 0.26) return false
+  if (avgChroma >= 96) return false
 
-  // Quitar manchas lisas sin texto.
-  if (edgeRatio < 0.012) return false
-  if (stdGray < 7) return false
+  // Quitar manchas sin texto.
+  if (edgeRatio < 0.006) return false
+  if (stdGray < 5) return false
 
-  // Mantener solo forma tipo código.
-  if (ratio < 1.25 || ratio > 10.5) return false
-
-  return true
-}
-
-function isCleanCrop(bitmap, candidate) {
-  if (candidate.forced) return true
-
-  const stats = measureZoneStats(bitmap, candidate)
-
-  if (stats.coloredRatio >= 0.20) return false
-  if (stats.avgChroma >= 78) return false
-  if (stats.edgeRatio < 0.008) return false
+  // Mantener forma parecida a etiqueta.
+  if (ratio < 0.85 || ratio > 13.5) return false
 
   return true
 }
 
-function detectPreciseCodeCandidates(bitmap) {
-  const bodies = removeOverlappingRegions(
-    detectComponents(bitmap, 'sticker-body'),
-    0.58
-  ).sort((a, b) => b.score - a.score)
+function detectVisualCandidates(bitmap) {
+  const lightCandidates = detectComponents(bitmap, 'light-pill')
+  const darkCandidates = detectComponents(bitmap, 'dark-label')
+  const neutralCandidates = detectComponents(bitmap, 'neutral-panel')
 
-  const lightLabels = detectComponents(bitmap, 'light-code-pill')
-  const darkLabels = detectComponents(bitmap, 'dark-code-box')
-
-  const smallLabelCandidates = uniqueZones([
-    ...lightLabels,
-    ...darkLabels,
+  const detected = uniqueZones([
+    ...lightCandidates,
+    ...darkCandidates,
+    ...neutralCandidates,
   ])
-    .filter(filterNoise)
+    .filter(filterVisualCandidate)
+
+  const withRotation = uniqueZones([
+    ...detected,
+    ...addRotatedCopies(detected),
+  ])
+
+  const fixed = makeFixedSingleFallbacks(bitmap)
+
+  const all = removeOverlappingRegions(
+    uniqueZones([
+      ...fixed,
+      ...withRotation,
+    ]),
+    0.52
+  )
     .sort((a, b) => b.score - a.score)
 
-  const likelySingleByBody = isLikelySinglePhoto(bitmap, bodies)
-
-  // Si no detecta cuerpos, no asumimos múltiple solo por ruido.
-  const likelyMultiple = !likelySingleByBody && (
-    bodies.length >= 3 ||
-    smallLabelCandidates.length >= 6
-  )
-
-  const likelySingle = likelySingleByBody || !likelyMultiple
-  const mainBody = getMainBody(bitmap, bodies)
-
-  let candidates = []
-
-  if (likelySingle) {
-    candidates = uniqueZones([
-      ...makeSingleCropsFromBody(bitmap, mainBody),
-      ...makeFixedSingleFallbacks(bitmap),
-      ...smallLabelCandidates.slice(0, 4),
-    ])
-  } else {
-    const multiBodyCrops = makeMultiCropsFromBodies(bitmap, bodies)
-      .filter(candidate => isCleanCrop(bitmap, candidate))
-
-    candidates = uniqueZones([
-      ...multiBodyCrops,
-      ...smallLabelCandidates.slice(0, 12),
-    ])
-
-    candidates = uniqueZones([
-      ...candidates,
-      ...addRotatedCopies(candidates),
-    ])
-  }
-
-  candidates = removeOverlappingRegions(
-    candidates,
-    likelySingle ? 0.62 : 0.52
-  ).sort((a, b) => b.score - a.score)
-
-  return {
-    candidates: candidates.slice(0, likelySingle ? MAX_SINGLE_CANDIDATES : MAX_MULTI_CANDIDATES),
-    likelySingle,
-    likelyMultiple,
-    bodies,
-    labelCount: smallLabelCandidates.length,
-  }
+  return all.slice(0, MAX_VISUAL_CANDIDATES)
 }
 
-function makeNormalCanvas(bitmap, candidate, scale = 2.8) {
+function makeNormalCanvas(bitmap, candidate, scale = 4) {
   const safe = clampZone(bitmap, candidate)
 
   const c = document.createElement('canvas')
@@ -1001,13 +752,13 @@ function makeNormalCanvas(bitmap, candidate, scale = 2.8) {
   return c
 }
 
-function makeRotatedCanvas(bitmap, candidate, scale = 2.5) {
+function makeRotatedCanvas(bitmap, candidate, scale = 3.4) {
   const safe = clampZone(bitmap, candidate)
   const angle = normalizeAngle(candidate.angle || 0)
 
   if (!angle) return makeNormalCanvas(bitmap, candidate, scale)
 
-  const padding = Math.ceil(Math.max(safe.width, safe.height) * 0.30)
+  const padding = Math.ceil(Math.max(safe.width, safe.height) * 0.34)
   const sourceX = Math.max(0, safe.x - padding)
   const sourceY = Math.max(0, safe.y - padding)
   const sourceW = Math.min(safe.width + padding * 2, bitmap.width - sourceX)
@@ -1016,8 +767,8 @@ function makeRotatedCanvas(bitmap, candidate, scale = 2.5) {
   const diagonal = Math.ceil(Math.sqrt(sourceW * sourceW + sourceH * sourceH))
 
   const c = document.createElement('canvas')
-  c.width = diagonal * scale
-  c.height = diagonal * scale
+  c.width = Math.max(1, Math.floor(diagonal * scale))
+  c.height = Math.max(1, Math.floor(diagonal * scale))
 
   const ctx = c.getContext('2d')
   ctx.fillStyle = '#ffffff'
@@ -1042,70 +793,390 @@ function makeRotatedCanvas(bitmap, candidate, scale = 2.5) {
   return c
 }
 
-function workerCanvasToUrl(bitmap, candidate) {
-  const canvas = candidate.rotateThumb
-    ? makeRotatedCanvas(bitmap, candidate)
-    : makeNormalCanvas(bitmap, candidate)
-
-  return canvas.toDataURL('image/jpeg', 0.92)
+function canvasToUrl(canvas) {
+  return canvas.toDataURL('image/jpeg', 0.94)
 }
 
-function buildDebugReading(bitmap, candidate, index, detection) {
-  const safe = clampZone(bitmap, candidate)
+function candidateToCanvas(bitmap, candidate, scale = 4) {
+  return candidate.rotateThumb
+    ? makeRotatedCanvas(bitmap, candidate, scale)
+    : makeNormalCanvas(bitmap, candidate, scale)
+}
+
+function preprocessCanvasForOcr(canvas, mode = 'normal') {
+  const c = document.createElement('canvas')
+  c.width = canvas.width
+  c.height = canvas.height
+
+  const ctx = c.getContext('2d')
+  ctx.drawImage(canvas, 0, 0)
+
+  const imageData = ctx.getImageData(0, 0, c.width, c.height)
+  const data = imageData.data
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+
+    let gray = Math.round((r * 0.299) + (g * 0.587) + (b * 0.114))
+
+    if (mode === 'contrast') {
+      gray = Math.round((gray - 128) * 1.85 + 128)
+    }
+
+    if (mode === 'binary') {
+      gray = gray >= 142 ? 255 : 0
+    }
+
+    gray = Math.max(0, Math.min(255, gray))
+
+    data[i] = gray
+    data[i + 1] = gray
+    data[i + 2] = gray
+  }
+
+  ctx.putImageData(imageData, 0, 0)
+
+  return c
+}
+
+function cleanOcrText(text) {
+  return String(text || '')
+    .toUpperCase()
+    .replace(/[|()[\]{}]/g, ' ')
+    .replace(/[^A-Z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeCode(code) {
+  return String(code || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+}
+
+function repairNumber(raw) {
+  return String(raw || '')
+    .toUpperCase()
+    .replace(/[OQD]/g, '0')
+    .replace(/[IL]/g, '1')
+    .replace(/[ZS]/g, '2')
+    .replace(/[^0-9]/g, '')
+}
+
+function levenshtein(a, b) {
+  const aa = String(a || '')
+  const bb = String(b || '')
+
+  const dp = Array.from({ length: aa.length + 1 }, () =>
+    Array(bb.length + 1).fill(0)
+  )
+
+  for (let i = 0; i <= aa.length; i += 1) dp[i][0] = i
+  for (let j = 0; j <= bb.length; j += 1) dp[0][j] = j
+
+  for (let i = 1; i <= aa.length; i += 1) {
+    for (let j = 1; j <= bb.length; j += 1) {
+      const cost = aa[i - 1] === bb[j - 1] ? 0 : 1
+
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      )
+    }
+  }
+
+  return dp[aa.length][bb.length]
+}
+
+function closestPrefix(rawPrefix) {
+  const clean = String(rawPrefix || '')
+    .toUpperCase()
+    .replace(/[^A-Z]/g, '')
+
+  if (!clean) return ''
+
+  if (VALID_PREFIXES.includes(clean)) return clean
+
+  let best = ''
+  let bestDistance = Infinity
+
+  VALID_PREFIXES.forEach(prefix => {
+    const distance = levenshtein(clean, prefix)
+
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = prefix
+    }
+  })
+
+  // Permitimos error pequeño porque OCR confunde FWC/FWG/FVC, ARG/ABG, PAR/P4R.
+  if (bestDistance <= 1) return best
+
+  return ''
+}
+
+function extractCodesFromText(text, candidate) {
+  const clean = cleanOcrText(text)
+  const joined = clean.replace(/\s+/g, '')
+
+  const found = []
+
+  const exactRegex = new RegExp(`(${VALID_PREFIXES.join('|')})\\s*([0-9OQDILZS]{1,2})`, 'g')
+  let exactMatch = exactRegex.exec(clean)
+
+  while (exactMatch) {
+    const prefix = exactMatch[1]
+    const number = repairNumber(exactMatch[2])
+
+    if (number) found.push(`${prefix}${number}`)
+
+    exactMatch = exactRegex.exec(clean)
+  }
+
+  const joinedRegex = new RegExp(`(${VALID_PREFIXES.join('|')})([0-9OQDILZS]{1,2})`, 'g')
+  let joinedMatch = joinedRegex.exec(joined)
+
+  while (joinedMatch) {
+    const prefix = joinedMatch[1]
+    const number = repairNumber(joinedMatch[2])
+
+    if (number) found.push(`${prefix}${number}`)
+
+    joinedMatch = joinedRegex.exec(joined)
+  }
+
+  // Búsqueda flexible: 2-4 letras + 1-2 números.
+  const flexibleRegex = /([A-Z]{2,4})\s*([0-9OQDILZS]{1,2})/g
+  let flexMatch = flexibleRegex.exec(clean)
+
+  while (flexMatch) {
+    const prefix = closestPrefix(flexMatch[1])
+    const number = repairNumber(flexMatch[2])
+
+    if (prefix && number) {
+      found.push(`${prefix}${number}`)
+    }
+
+    flexMatch = flexibleRegex.exec(clean)
+  }
+
+  const joinedFlexibleRegex = /([A-Z]{2,4})([0-9OQDILZS]{1,2})/g
+  let joinedFlexMatch = joinedFlexibleRegex.exec(joined)
+
+  while (joinedFlexMatch) {
+    const prefix = closestPrefix(joinedFlexMatch[1])
+    const number = repairNumber(joinedFlexMatch[2])
+
+    if (prefix && number) {
+      found.push(`${prefix}${number}`)
+    }
+
+    joinedFlexMatch = joinedFlexibleRegex.exec(joined)
+  }
+
+  // Reparaciones controladas por tipo de recorte.
+  const kind = String(candidate.kind || '').toLowerCase()
+
+  if (kind.includes('fwc') || joined.includes('FW') || joined.includes('WC')) {
+    const numberMatch = joined.match(/(?:FWC|FWG|FVC|FIC|WC|WGC|C)([0-9OQDILZS]{1,2})/)
+    const number = repairNumber(numberMatch?.[1] || '')
+
+    if (number) found.push(`FWC${number}`)
+  }
+
+  if (kind.includes('arg') || joined.includes('ARG') || joined.includes('RG')) {
+    const numberMatch = joined.match(/(?:ARG|ABG|AKG|RG|AG)([0-9OQDILZS]{1,2})/)
+    const number = repairNumber(numberMatch?.[1] || '')
+
+    if (number) found.push(`ARG${number}`)
+  }
+
+  if (kind.includes('par') || joined.includes('PAR')) {
+    const numberMatch = joined.match(/(?:PAR|P4R|FAR|PAB)([0-9OQDILZS]{1,2})/)
+    const number = repairNumber(numberMatch?.[1] || '')
+
+    if (number) found.push(`PAR${number}`)
+  }
+
+  return [...new Set(found.map(normalizeCode))]
+    .filter(code => /^[A-Z]{3}[0-9]{1,2}$/.test(code))
+}
+
+async function recognizeCandidate(recognize, bitmap, candidate, index) {
+  const originalCanvas = candidateToCanvas(bitmap, candidate, candidate.forced ? 5 : 4)
+
+  const modes = index < 6
+    ? ['normal', 'contrast', 'binary']
+    : ['normal', 'contrast']
+
+  let best = {
+    codes: [],
+    rawText: '',
+    confidence: 0,
+    thumbUrl: canvasToUrl(originalCanvas),
+  }
+
+  for (let i = 0; i < modes.length; i += 1) {
+    const processedCanvas = preprocessCanvasForOcr(originalCanvas, modes[i])
+    const imageDataUrl = canvasToUrl(processedCanvas)
+
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await recognize(imageDataUrl, 'eng', {
+        rotateAuto: false,
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
+        tessedit_pageseg_mode: '7',
+      })
+
+      const rawText = String(result?.data?.text || '')
+      const confidence = Number(result?.data?.confidence ?? 0)
+      const codes = extractCodesFromText(rawText, candidate)
+
+      if (
+        codes.length > best.codes.length ||
+        (codes.length === best.codes.length && confidence > best.confidence)
+      ) {
+        best = {
+          codes,
+          rawText,
+          confidence,
+          thumbUrl: canvasToUrl(originalCanvas),
+        }
+      }
+
+      if (codes.length) break
+    } catch (error) {
+      console.warn('OCR candidate failed:', error)
+    }
+  }
+
+  return best
+}
+
+function buildDebugLabel(candidate, index, detection) {
   const meta = candidate.meta || {}
   const angle = normalizeAngle(candidate.angle || 0)
+  const codes = candidate.codes || []
 
-  const label = [
+  return [
     `DBG${index + 1}`,
-    detection.likelySingle ? 'SINGLE' : 'MULTI',
+    detection.mode,
+    codes.length ? `CODE:${codes.join(',')}` : 'NO_CODE',
     candidate.kind || 'unknown',
     candidate.rotateThumb ? 'ROT' : '',
     candidate.forced ? 'FORCED' : '',
     `score${Math.round(candidate.score || 0)}`,
     angle ? `ang${angle}` : '',
-    `x${safe.x}`,
-    `y${safe.y}`,
-    `w${safe.width}`,
-    `h${safe.height}`,
-    meta.bodyRatio !== undefined ? `bodyR${meta.bodyRatio}` : '',
-    meta.visual !== undefined ? `v${meta.visual}` : '',
+    `x${Math.round(candidate.x)}`,
+    `y${Math.round(candidate.y)}`,
+    `w${Math.round(candidate.width)}`,
+    `h${Math.round(candidate.height)}`,
+    meta.ratio !== undefined ? `r${meta.ratio}` : '',
     meta.coloredRatio !== undefined ? `color${meta.coloredRatio}` : '',
     meta.avgChroma !== undefined ? `chroma${meta.avgChroma}` : '',
+    candidate.ocrRawText ? `raw:${cleanOcrText(candidate.ocrRawText)}` : '',
   ]
     .filter(Boolean)
     .join(' ')
+}
+
+function buildReading(bitmap, candidate, index, detection) {
+  const codes = candidate.codes || []
+  const label = buildDebugLabel(candidate, index, detection)
 
   return {
-    id: `debug-candidate-${index}`,
-    confidence: Math.max(1, 99 - index),
-    rawText: label,
-    region: safe,
-    thumbUrl: workerCanvasToUrl(bitmap, candidate),
+    id: `debug-code-candidate-${index}`,
+    confidence: codes.length
+      ? Math.max(50, Math.round(candidate.ocrConfidence || 0))
+      : Math.max(1, 99 - index),
+    rawText: codes.length ? codes.join(' ') : label,
+    region: clampZone(bitmap, candidate),
+    thumbUrl: candidate.thumbUrl || canvasToUrl(candidateToCanvas(bitmap, candidate, 3)),
     manualCode: '',
   }
 }
 
-export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
-  void recognize
+function estimateMode(candidates) {
+  const forcedCount = candidates.filter(candidate => candidate.forced).length
+  const nonForcedCount = candidates.length - forcedCount
 
-  const detection = detectPreciseCodeCandidates(bitmap)
-  const { candidates } = detection
+  if (nonForcedCount >= 12) return 'MULTI'
+  return 'DEBUG'
+}
+
+export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
+  const visualCandidates = detectVisualCandidates(bitmap)
+  const mode = estimateMode(visualCandidates)
+
+  const ocrTargets = visualCandidates.slice(0, MAX_OCR_CANDIDATES)
+  const enriched = []
+
+  for (let i = 0; i < ocrTargets.length; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const ocr = await recognizeCandidate(recognize, bitmap, ocrTargets[i], i)
+
+    enriched.push({
+      ...ocrTargets[i],
+      codes: ocr.codes,
+      ocrRawText: ocr.rawText,
+      ocrConfidence: ocr.confidence,
+      thumbUrl: ocr.thumbUrl,
+    })
+  }
+
+  const untouched = visualCandidates
+    .slice(MAX_OCR_CANDIDATES)
+    .map(candidate => ({
+      ...candidate,
+      codes: [],
+      ocrRawText: '',
+      ocrConfidence: 0,
+      thumbUrl: canvasToUrl(candidateToCanvas(bitmap, candidate, 3)),
+    }))
+
+  const sorted = [
+    ...enriched,
+    ...untouched,
+  ].sort((a, b) => {
+    const aCode = a.codes?.length ? 1 : 0
+    const bCode = b.codes?.length ? 1 : 0
+
+    if (aCode !== bCode) return bCode - aCode
+
+    const aForced = a.forced ? 1 : 0
+    const bForced = b.forced ? 1 : 0
+
+    if (aForced !== bForced) return bForced - aForced
+
+    return b.score - a.score
+  })
+
+  const finalCandidates = sorted.slice(0, MAX_DEBUG_RESULTS)
+
+  const detection = {
+    mode,
+    visualCount: visualCandidates.length,
+    ocrCount: ocrTargets.length,
+  }
 
   if (DEBUG_DETECTOR) {
-    console.log('DEBUG CLEAN CODE DETECTOR:', {
-      likelySingle: detection.likelySingle,
-      likelyMultiple: detection.likelyMultiple,
-      bodies: detection.bodies.length,
-      labels: detection.labelCount,
-      count: candidates.length,
-      candidates: candidates.map(candidate => ({
+    console.log('DEBUG BOX FIRST OCR DETECTOR:', {
+      mode,
+      visualCount: visualCandidates.length,
+      ocrCount: ocrTargets.length,
+      candidates: finalCandidates.map(candidate => ({
         kind: candidate.kind,
+        codes: candidate.codes,
+        raw: candidate.ocrRawText,
+        confidence: candidate.ocrConfidence,
         score: candidate.score,
         x: candidate.x,
         y: candidate.y,
         width: candidate.width,
         height: candidate.height,
-        angle: candidate.angle,
         rotated: Boolean(candidate.rotateThumb),
         forced: Boolean(candidate.forced),
         meta: candidate.meta,
@@ -1113,15 +1184,15 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
     })
   }
 
-  const debugReadings = candidates.map((candidate, index) =>
-    buildDebugReading(bitmap, candidate, index, detection)
+  const readings = finalCandidates.map((candidate, index) =>
+    buildReading(bitmap, candidate, index, detection)
   )
 
-  const grouped = classifyZoneReadings(debugReadings, stickers)
+  const grouped = classifyZoneReadings(readings, stickers)
 
   return {
     grouped,
-    regions: candidates.map(candidate => ({
+    regions: finalCandidates.map(candidate => ({
       x: candidate.x,
       y: candidate.y,
       width: candidate.width,

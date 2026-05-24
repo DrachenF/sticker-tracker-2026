@@ -1,10 +1,13 @@
-import { classifyZoneReadings, detectCodeLabelRegions } from './ocrStickerCodes'
+import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_OCR = false
 
-const OCR_MIN_WIDTH = 38
-const OCR_MIN_HEIGHT = 16
 const OCR_SCALE = 6
+const OCR_MIN_WIDTH = 34
+const OCR_MIN_HEIGHT = 14
+
+const MAX_OCR_CANDIDATES = 14
+const OCR_TIME_LIMIT_MS = 18000
 
 const COMMON_FALLBACK_PREFIXES = [
   'FWC',
@@ -33,6 +36,7 @@ const COMMON_FALLBACK_PREFIXES = [
   'POR',
   'ITA',
   'NED',
+  'BEL',
 ]
 
 function normalizeRaw(value) {
@@ -208,13 +212,10 @@ function buildTextCandidates(rawText) {
     }
   })
 
-  const firstChunk = cleanText
-    .replace(/[^A-Z0-9]+/g, ' ')
-    .trim()
-    .slice(0, 40)
+  const compactFull = normalizeRaw(cleanText)
 
-  if (firstChunk) {
-    candidates.push(firstChunk)
+  if (compactFull && compactFull.length <= 24) {
+    candidates.push(compactFull)
   }
 
   return Array.from(new Set(candidates))
@@ -235,16 +236,16 @@ function extractValidCodesFromText(rawText, validStickerData) {
   const candidates = buildTextCandidates(rawText)
   const extractedCodes = []
 
-  const normalRegex = new RegExp(
-    `(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`,
-    'g'
-  )
-
-  const compactStartRegex = new RegExp(
-    `^(${prefixes})([0-9OQDISBLZG]{1,3})`
-  )
-
   candidates.forEach(source => {
+    const normalRegex = new RegExp(
+      `(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`,
+      'g'
+    )
+
+    const compactStartRegex = new RegExp(
+      `^(${prefixes})([0-9OQDISBLZG]{1,3})`
+    )
+
     let match
 
     while ((match = normalRegex.exec(source)) !== null) {
@@ -314,13 +315,18 @@ function isReadableZone(bitmap, zone) {
   )
 }
 
-function relativeZone(parent, rx, ry, rw, rh) {
-  return {
-    x: Math.floor(parent.x + parent.width * rx),
-    y: Math.floor(parent.y + parent.height * ry),
-    width: Math.max(1, Math.floor(parent.width * rw)),
-    height: Math.max(1, Math.floor(parent.height * rh)),
-  }
+function expandZone(bitmap, zone, amountX = 0.35, amountY = 0.45) {
+  const safeZone = clampZone(bitmap, zone)
+
+  const extraX = Math.floor(safeZone.width * amountX)
+  const extraY = Math.floor(safeZone.height * amountY)
+
+  return clampZone(bitmap, {
+    x: safeZone.x - extraX,
+    y: safeZone.y - extraY,
+    width: safeZone.width + extraX * 2,
+    height: safeZone.height + extraY * 2,
+  })
 }
 
 function uniqueZones(zones) {
@@ -332,6 +338,7 @@ function uniqueZones(zones) {
       Math.round(zone?.y || 0),
       Math.round(zone?.width || 0),
       Math.round(zone?.height || 0),
+      zone?.kind || '',
     ].join('|')
 
     if (seen.has(key)) return false
@@ -339,6 +346,48 @@ function uniqueZones(zones) {
     seen.add(key)
     return true
   })
+}
+
+function regionIoU(a, b) {
+  const ax1 = a.x
+  const ay1 = a.y
+  const ax2 = a.x + a.width
+  const ay2 = a.y + a.height
+
+  const bx1 = b.x
+  const by1 = b.y
+  const bx2 = b.x + b.width
+  const by2 = b.y + b.height
+
+  const ix1 = Math.max(ax1, bx1)
+  const iy1 = Math.max(ay1, by1)
+  const ix2 = Math.min(ax2, bx2)
+  const iy2 = Math.min(ay2, by2)
+
+  const iw = Math.max(0, ix2 - ix1)
+  const ih = Math.max(0, iy2 - iy1)
+
+  const intersection = iw * ih
+  const union = (a.width * a.height) + (b.width * b.height) - intersection
+
+  if (!union) return 0
+
+  return intersection / union
+}
+
+function removeOverlappingRegions(regions) {
+  const sorted = [...regions].sort((a, b) => b.score - a.score)
+  const kept = []
+
+  sorted.forEach(region => {
+    const overlaps = kept.some(existing => regionIoU(existing, region) > 0.35)
+
+    if (!overlaps) {
+      kept.push(region)
+    }
+  })
+
+  return kept
 }
 
 function workerCanvasToUrl(bitmap, zone) {
@@ -365,7 +414,7 @@ function workerCanvasToUrl(bitmap, zone) {
   return c.toDataURL('image/jpeg', 0.86)
 }
 
-function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = OCR_SCALE, rotate180 = false) {
+function buildOcrCanvas(bitmap, zone, mode = 'light', scale = OCR_SCALE) {
   const safeZone = clampZone(bitmap, zone)
 
   if (!isReadableZone(bitmap, safeZone)) {
@@ -379,11 +428,6 @@ function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = OCR_SCALE, rota
   const ctx = c.getContext('2d')
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
-
-  if (rotate180) {
-    ctx.translate(c.width, c.height)
-    ctx.rotate(Math.PI)
-  }
 
   ctx.drawImage(
     bitmap,
@@ -428,11 +472,14 @@ function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = OCR_SCALE, rota
       value = Math.max(0, Math.min(255, value))
     }
 
-    if (mode === 'threshold') {
+    if (mode === 'light') {
+      // Fondo claro + letras grises/oscuras.
       value = gray > avgGray ? 255 : 0
     }
 
-    if (mode === 'threshold-invert') {
+    if (mode === 'dark') {
+      // Fondo gris/oscuro + letras blancas.
+      // Se invierte para que Tesseract vea letras negras sobre fondo blanco.
       value = gray > avgGray ? 0 : 255
     }
 
@@ -446,28 +493,13 @@ function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = OCR_SCALE, rota
   return c
 }
 
-async function runOcrAttempt(recognize, bitmap, zone, options = {}) {
-  const {
-    mode = 'contrast',
-    pageSegMode = 7,
-    rotate180 = false,
-  } = options
-
-  if (!isReadableZone(bitmap, zone)) {
-    return {
-      confidence: 0,
-      text: '',
-      imageDataUrl: '',
-    }
-  }
-
-  const canvas = buildOcrCanvas(bitmap, zone, mode, OCR_SCALE, rotate180)
+async function runOcrAttempt(recognize, bitmap, candidate, mode, pageSegMode = 7) {
+  const canvas = buildOcrCanvas(bitmap, candidate, mode, OCR_SCALE)
 
   if (!canvas || canvas.width < OCR_MIN_WIDTH || canvas.height < OCR_MIN_HEIGHT) {
     return {
       confidence: 0,
       text: '',
-      imageDataUrl: '',
     }
   }
 
@@ -483,7 +515,6 @@ async function runOcrAttempt(recognize, bitmap, zone, options = {}) {
     return {
       confidence: Number(result?.data?.confidence ?? 0),
       text: String(result?.data?.text || ''),
-      imageDataUrl,
     }
   } catch (error) {
     console.warn('OCR attempt failed:', error)
@@ -491,14 +522,101 @@ async function runOcrAttempt(recognize, bitmap, zone, options = {}) {
     return {
       confidence: 0,
       text: '',
-      imageDataUrl,
     }
   }
 }
 
-function detectLightStickerRegions(bitmap) {
-  const maxW = 360
+function getPixelInfo(data, index) {
+  const i = index * 4
+  const r = data[i]
+  const g = data[i + 1]
+  const b = data[i + 2]
+
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const gray = Math.round((r * 0.299) + (g * 0.587) + (b * 0.114))
+  const chroma = max - min
+
+  return {
+    gray,
+    chroma,
+  }
+}
+
+function createMaskClassifier(kind) {
+  if (kind === 'light') {
+    return ({ gray, chroma }) => (
+      gray >= 145 &&
+      gray <= 255 &&
+      chroma <= 58
+    )
+  }
+
+  return ({ gray, chroma }) => (
+    gray >= 55 &&
+    gray <= 185 &&
+    chroma <= 50
+  )
+}
+
+function componentToCandidate(bitmap, component, scale, kind, imageArea) {
+  const boxW = component.maxX - component.minX + 1
+  const boxH = component.maxY - component.minY + 1
+  const area = boxW * boxH
+  const fillRatio = component.count / Math.max(1, area)
+  const ratio = boxW / Math.max(1, boxH)
+
+  const originalX = Math.floor(component.minX / scale)
+  const originalY = Math.floor(component.minY / scale)
+  const originalW = Math.floor(boxW / scale)
+  const originalH = Math.floor(boxH / scale)
+
+  if (originalW < 28 || originalH < 10) return null
+  if (originalW > bitmap.width * 0.42) return null
+  if (originalH > bitmap.height * 0.18) return null
+
+  if (ratio < 1.25 || ratio > 9.5) return null
+  if (fillRatio < 0.18) return null
+
+  const originalArea = originalW * originalH
+  const imageAreaRatio = originalArea / Math.max(1, imageArea)
+
+  if (imageAreaRatio < 0.00025 || imageAreaRatio > 0.04) return null
+
+  let score = 100
+
+  score -= Math.abs(ratio - 3.4) * 6
+  score += Math.min(20, fillRatio * 18)
+
+  if (kind === 'light') score += 6
+  if (kind === 'dark') score += 10
+
+  if (originalH >= 14 && originalH <= 70) score += 8
+  if (originalW >= 45 && originalW <= 230) score += 8
+
+  const expanded = expandZone(
+    bitmap,
+    {
+      x: originalX,
+      y: originalY,
+      width: originalW,
+      height: originalH,
+    },
+    0.45,
+    0.75
+  )
+
+  return {
+    ...expanded,
+    kind,
+    score,
+  }
+}
+
+function detectComponents(bitmap, kind) {
+  const maxW = 520
   const scale = Math.min(1, maxW / bitmap.width)
+
   const w = Math.max(1, Math.floor(bitmap.width * scale))
   const h = Math.max(1, Math.floor(bitmap.height * scale))
 
@@ -513,27 +631,22 @@ function detectLightStickerRegions(bitmap) {
   const data = imageData.data
   const visited = new Uint8Array(w * h)
 
-  function isStickerPixel(index) {
-    const i = index * 4
-    const r = data[i]
-    const g = data[i + 1]
-    const b = data[i + 2]
-
-    const max = Math.max(r, g, b)
-    const min = Math.min(r, g, b)
-    const gray = Math.round((r * 0.299) + (g * 0.587) + (b * 0.114))
-    const chroma = max - min
-
-    return gray >= 82 && gray <= 245 && chroma <= 58
-  }
-
-  const components = []
+  const isTargetPixel = createMaskClassifier(kind)
+  const candidates = []
+  const imageArea = bitmap.width * bitmap.height
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
       const start = y * w + x
 
-      if (visited[start] || !isStickerPixel(start)) continue
+      if (visited[start]) continue
+
+      const info = getPixelInfo(data, start)
+
+      if (!isTargetPixel(info)) {
+        visited[start] = 1
+        continue
+      }
 
       const stack = [start]
       visited[start] = 1
@@ -570,195 +683,60 @@ function detectLightStickerRegions(bitmap) {
           const ny = Math.floor(next / w)
 
           if (Math.abs(nx - cx) + Math.abs(ny - cy) !== 1) return
-          if (visited[next] || !isStickerPixel(next)) return
+          if (visited[next]) return
+
+          const nextInfo = getPixelInfo(data, next)
+
+          if (!isTargetPixel(nextInfo)) {
+            visited[next] = 1
+            return
+          }
 
           visited[next] = 1
           stack.push(next)
         })
       }
 
-      const boxW = maxX - minX + 1
-      const boxH = maxY - minY + 1
-      const area = boxW * boxH
-      const ratio = boxW / Math.max(1, boxH)
-
-      if (
-        count >= w * h * 0.015 &&
-        area >= w * h * 0.035 &&
-        ratio >= 0.75 &&
-        ratio <= 3.5
-      ) {
-        const expandX = Math.floor(boxW * 0.06)
-        const expandY = Math.floor(boxH * 0.06)
-
-        components.push({
-          x: Math.floor((minX - expandX) / scale),
-          y: Math.floor((minY - expandY) / scale),
-          width: Math.floor((boxW + expandX * 2) / scale),
-          height: Math.floor((boxH + expandY * 2) / scale),
-        })
+      const component = {
+        minX,
+        maxX,
+        minY,
+        maxY,
+        count,
       }
-    }
-  }
 
-  return components
-    .map(region => clampZone(bitmap, region))
-    .filter(region => isReadableZone(bitmap, region))
-    .slice(0, 6)
-}
-
-function buildCodeCandidateAttempts(bitmap, zone) {
-  const safeZone = clampZone(bitmap, zone)
-  const isSmallZone = (
-    safeZone.width <= bitmap.width * 0.42 &&
-    safeZone.height <= bitmap.height * 0.22
-  )
-
-  const attempts = []
-
-  if (isSmallZone) {
-    attempts.push({
-      zone: safeZone,
-      mode: 'original',
-      pageSegMode: 7,
-      rotate180: false,
-    })
-
-    attempts.push({
-      zone: safeZone,
-      mode: 'contrast',
-      pageSegMode: 7,
-      rotate180: false,
-    })
-
-    attempts.push({
-      zone: safeZone,
-      mode: 'threshold',
-      pageSegMode: 7,
-      rotate180: false,
-    })
-
-    attempts.push({
-      zone: safeZone,
-      mode: 'contrast',
-      pageSegMode: 8,
-      rotate180: false,
-    })
-  }
-
-  const topRightWide = relativeZone(safeZone, 0.52, 0.00, 0.44, 0.22)
-  const topRightLower = relativeZone(safeZone, 0.52, 0.06, 0.44, 0.22)
-  const topRightTight = relativeZone(safeZone, 0.60, 0.02, 0.34, 0.16)
-
-  attempts.push({
-    zone: topRightWide,
-    mode: 'original',
-    pageSegMode: 7,
-    rotate180: false,
-  })
-
-  attempts.push({
-    zone: topRightWide,
-    mode: 'contrast',
-    pageSegMode: 7,
-    rotate180: false,
-  })
-
-  attempts.push({
-    zone: topRightLower,
-    mode: 'contrast',
-    pageSegMode: 7,
-    rotate180: false,
-  })
-
-  attempts.push({
-    zone: topRightTight,
-    mode: 'contrast',
-    pageSegMode: 8,
-    rotate180: false,
-  })
-
-  return attempts.filter(attempt => isReadableZone(bitmap, attempt.zone))
-}
-
-async function recognizeZone(recognize, bitmap, zone, zoneIndex, validStickerData) {
-  const attempts = buildCodeCandidateAttempts(bitmap, zone)
-  const readings = []
-
-  for (let i = 0; i < attempts.length; i += 1) {
-    const attempt = attempts[i]
-
-    // eslint-disable-next-line no-await-in-loop
-    const result = await runOcrAttempt(
-      recognize,
-      bitmap,
-      attempt.zone,
-      {
-        mode: attempt.mode,
-        pageSegMode: attempt.pageSegMode,
-        rotate180: attempt.rotate180,
-      }
-    )
-
-    if (DEBUG_OCR && result.text) {
-      console.log(
-        `OCR zona ${zoneIndex} intento ${i} modo ${attempt.mode} psm ${attempt.pageSegMode}:`,
-        result.text.replace(/\n+/g, ' ')
+      const candidate = componentToCandidate(
+        bitmap,
+        component,
+        scale,
+        kind,
+        imageArea
       )
-    }
 
-    const extractedCodes = extractValidCodesFromText(result.text, validStickerData)
-
-    if (extractedCodes.length > 0) {
-      extractedCodes.forEach((code, codeIndex) => {
-        readings.push({
-          id: `zone-${zoneIndex}-${i}-${codeIndex}`,
-          confidence: result.confidence,
-          rawText: code,
-          region: attempt.zone,
-          thumbUrl: workerCanvasToUrl(bitmap, attempt.zone),
-          manualCode: '',
-        })
-      })
+      if (candidate && isReadableZone(bitmap, candidate)) {
+        candidates.push(candidate)
+      }
     }
   }
 
-  return readings
+  return candidates
 }
 
-function buildFallbackRegions(bitmap) {
-  const { width, height } = bitmap
+function detectCodeLabelCandidates(bitmap) {
+  const lightCandidates = detectComponents(bitmap, 'light')
+  const darkCandidates = detectComponents(bitmap, 'dark')
 
-  const detectedStickerRegions = detectLightStickerRegions(bitmap)
+  const candidates = uniqueZones([
+    ...lightCandidates,
+    ...darkCandidates,
+  ])
+    .filter(candidate => isReadableZone(bitmap, candidate))
 
-  const manualCodeRegions = [
-    // Para fotos como la que mandaste: código arriba derecha de la estampa.
-    {
-      x: Math.floor(width * 0.58),
-      y: Math.floor(height * 0.32),
-      width: Math.floor(width * 0.32),
-      height: Math.floor(height * 0.13),
-    },
+  const cleaned = removeOverlappingRegions(candidates)
 
-    {
-      x: Math.floor(width * 0.62),
-      y: Math.floor(height * 0.34),
-      width: Math.floor(width * 0.26),
-      height: Math.floor(height * 0.09),
-    },
-
-    {
-      x: Math.floor(width * 0.52),
-      y: Math.floor(height * 0.29),
-      width: Math.floor(width * 0.40),
-      height: Math.floor(height * 0.22),
-    },
-  ]
-
-  return uniqueZones([
-    ...manualCodeRegions,
-    ...detectedStickerRegions,
-  ]).filter(region => isReadableZone(bitmap, region))
+  return cleaned
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_OCR_CANDIDATES)
 }
 
 function dedupeReadings(readings) {
@@ -787,28 +765,96 @@ function dedupeReadings(readings) {
   return result
 }
 
-function pickBestReadings(readings) {
-  const clean = dedupeReadings(
-    readings.filter(reading =>
-      /^[A-Z]{3}\d{1,3}$/.test(normalizeStickerCode(reading.rawText))
-    )
-  )
+function pickBestCandidateReadings(readings) {
+  const grouped = new Map()
 
-  if (!clean.length) {
-    return []
+  readings.forEach(reading => {
+    const code = normalizeStickerCode(reading.rawText)
+
+    if (!/^[A-Z]{3}\d{1,3}$/.test(code)) return
+
+    const current = grouped.get(code)
+
+    const score = (
+      Number(reading.confidence || 0) +
+      Number(reading.candidateScore || 0) +
+      Number(reading.repeatedScore || 0)
+    )
+
+    if (!current || score > current.score) {
+      grouped.set(code, {
+        score,
+        reading: {
+          ...reading,
+          rawText: code,
+        },
+      })
+    }
+  })
+
+  return Array.from(grouped.values())
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.reading)
+}
+
+async function recognizeCandidate(recognize, bitmap, candidate, candidateIndex, validStickerData, startedAt) {
+  const modes = candidate.kind === 'dark'
+    ? [
+        { mode: 'dark', pageSegMode: 7 },
+        { mode: 'contrast', pageSegMode: 7 },
+      ]
+    : [
+        { mode: 'light', pageSegMode: 7 },
+        { mode: 'contrast', pageSegMode: 7 },
+      ]
+
+  const readings = []
+  const localHits = new Map()
+
+  for (let i = 0; i < modes.length; i += 1) {
+    if (Date.now() - startedAt > OCR_TIME_LIMIT_MS) break
+
+    const attempt = modes[i]
+
+    // eslint-disable-next-line no-await-in-loop
+    const result = await runOcrAttempt(
+      recognize,
+      bitmap,
+      candidate,
+      attempt.mode,
+      attempt.pageSegMode
+    )
+
+    if (DEBUG_OCR && result.text) {
+      console.log(
+        `OCR candidato ${candidateIndex} ${candidate.kind} modo ${attempt.mode}:`,
+        result.text.replace(/\n+/g, ' ')
+      )
+    }
+
+    const extractedCodes = extractValidCodesFromText(result.text, validStickerData)
+
+    extractedCodes.forEach(code => {
+      localHits.set(code, (localHits.get(code) || 0) + 1)
+
+      readings.push({
+        id: `candidate-${candidateIndex}-${i}-${code}`,
+        confidence: Number(result.confidence || 0),
+        candidateScore: Number(candidate.score || 0),
+        repeatedScore: (localHits.get(code) || 1) * 15,
+        rawText: code,
+        region: candidate,
+        thumbUrl: workerCanvasToUrl(bitmap, candidate),
+        manualCode: '',
+      })
+    })
   }
 
-  return clean
-    .sort((a, b) => {
-      const aConfidence = Number(a.confidence || 0)
-      const bConfidence = Number(b.confidence || 0)
-
-      return bConfidence - aConfidence
-    })
-    .slice(0, 1)
+  return readings
 }
 
 export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
+  const startedAt = Date.now()
   const validStickerData = buildValidStickerData(stickers)
 
   if (DEBUG_OCR) {
@@ -817,42 +863,41 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
     console.log('OCR hasCatalog:', validStickerData.hasCatalog)
   }
 
-  const primaryRegions = detectCodeLabelRegions(bitmap) || []
-  const fallbackRegions = buildFallbackRegions(bitmap)
+  const candidates = detectCodeLabelCandidates(bitmap)
 
-  const allRegions = uniqueZones([
-    ...fallbackRegions,
-    ...primaryRegions,
-  ])
-    .filter(region => isReadableZone(bitmap, region))
-    .slice(0, 6)
+  if (DEBUG_OCR) {
+    console.log('OCR candidates:', candidates)
+  }
 
   const allReadings = []
 
-  for (let i = 0; i < allRegions.length; i += 1) {
+  for (let i = 0; i < candidates.length; i += 1) {
+    if (Date.now() - startedAt > OCR_TIME_LIMIT_MS) break
+
     // eslint-disable-next-line no-await-in-loop
-    const zoneResults = await recognizeZone(
+    const candidateReadings = await recognizeCandidate(
       recognize,
       bitmap,
-      allRegions[i],
+      candidates[i],
       i,
-      validStickerData
+      validStickerData,
+      startedAt
     )
 
-    allReadings.push(...zoneResults)
-
-    const bestNow = pickBestReadings(allReadings)
-
-    if (bestNow.length > 0) {
-      return {
-        grouped: classifyZoneReadings(bestNow, stickers),
-        regions: primaryRegions,
-      }
-    }
+    allReadings.push(...candidateReadings)
   }
 
+  const bestReadings = pickBestCandidateReadings(
+    dedupeReadings(allReadings)
+  )
+
   return {
-    grouped: classifyZoneReadings([], stickers),
-    regions: primaryRegions,
+    grouped: classifyZoneReadings(bestReadings, stickers),
+    regions: candidates.map(candidate => ({
+      x: candidate.x,
+      y: candidate.y,
+      width: candidate.width,
+      height: candidate.height,
+    })),
   }
 }

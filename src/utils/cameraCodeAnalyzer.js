@@ -2,9 +2,10 @@ import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_DETECTOR = true
 
-const MAX_VISUAL_CANDIDATES = 42
-const MAX_OCR_CANDIDATES = 18
-const MAX_DEBUG_RESULTS = 26
+const MAX_VISUAL_CANDIDATES = 34
+const MAX_PRIMARY_OCR = 8
+const MAX_FALLBACK_OCR = 5
+const MAX_DEBUG_RESULTS = 22
 
 const VALID_PREFIXES = [
   'FWC',
@@ -14,6 +15,24 @@ const VALID_PREFIXES = [
   'NED', 'POL', 'POR', 'ROU', 'SRB', 'SVK', 'UKR', 'CRC', 'GUA', 'HON', 'JAM',
   'PAN', 'SLV', 'ALG', 'BFA', 'CMR', 'CIV', 'EGY', 'GHA', 'MLI', 'NGA', 'SEN',
   'TUN', 'AUS', 'IRN', 'IRQ', 'JPN', 'KSA', 'UAE', 'UZB', 'NZL'
+]
+
+const STOP_WORDS = [
+  'FIFA',
+  'WORLD',
+  'CUP',
+  'OFFICIAL',
+  'LICENSED',
+  'PRODUCT',
+  'PANINI',
+  'MANUFACTURED',
+  'BRASIL',
+  'BRAZIL',
+  'TRADE',
+  'NAMES',
+  'EVENTS',
+  'DESIGNS',
+  'LOGOS'
 ]
 
 function clampZone(bitmap, zone) {
@@ -113,7 +132,6 @@ function getComponentAngle(component) {
 
 function createMaskClassifier(kind) {
   if (kind === 'light-pill') {
-    // Fondo claro/blanco de FWC2, FWC3, FWC6.
     return ({ gray, chroma }) => (
       gray >= 128 &&
       gray <= 255 &&
@@ -122,7 +140,6 @@ function createMaskClassifier(kind) {
   }
 
   if (kind === 'dark-label') {
-    // Caja gris/oscura de ARG17, PAR1.
     return ({ gray, chroma }) => (
       gray >= 38 &&
       gray <= 188 &&
@@ -131,7 +148,6 @@ function createMaskClassifier(kind) {
   }
 
   if (kind === 'neutral-panel') {
-    // Paneles grises donde suele estar el código.
     return ({ gray, chroma }) => (
       gray >= 74 &&
       gray <= 236 &&
@@ -244,12 +260,10 @@ function scoreCandidate(bitmap, zone, kind, componentMeta = {}) {
 
   let score = 0
 
-  // Forma esperada: rectángulo horizontal.
   if (ratio >= 1.25 && ratio <= 10.8) score += 36
   if (ratio >= 1.8 && ratio <= 7.0) score += 42
   if (ratio >= 2.4 && ratio <= 5.8) score += 18
 
-  // Debe tener bajo color: blanco/gris/negro.
   if (stats.coloredRatio <= 0.10) score += 70
   else if (stats.coloredRatio <= 0.16) score += 42
   else if (stats.coloredRatio <= 0.24) score += 12
@@ -260,7 +274,6 @@ function scoreCandidate(bitmap, zone, kind, componentMeta = {}) {
   else if (stats.avgChroma <= 86) score -= 35
   else score -= 160
 
-  // Debe tener letras/números, no mancha lisa.
   if (stats.stdGray >= 7 && stats.stdGray <= 105) score += 28
   if (stats.edgeRatio >= 0.010 && stats.edgeRatio <= 0.70) score += 34
   if (stats.edgeRatio < 0.008) score -= 90
@@ -280,7 +293,6 @@ function scoreCandidate(bitmap, zone, kind, componentMeta = {}) {
     score += 20
   }
 
-  // Castigos fuertes contra mantel/flor/fondo.
   if (stats.coloredRatio >= 0.30) score -= 240
   if (stats.avgChroma >= 105) score -= 240
   if (ratio < 0.85 || ratio > 13.5) score -= 150
@@ -535,9 +547,7 @@ function removeOverlappingRegions(regions, maxOverlap = 0.52) {
       return regionIoU(existing, region) > maxOverlap
     })
 
-    if (!overlaps) {
-      kept.push(region)
-    }
+    if (!overlaps) kept.push(region)
   })
 
   return kept
@@ -592,10 +602,7 @@ function addRotatedCopies(candidates) {
 function makeFixedSingleFallbacks(bitmap) {
   const { width, height } = bitmap
 
-  // Son backups para tus fotos solitarias.
-  // No dependen del color y ayudan cuando el detector no encuentra bien la caja.
   return [
-    // FWC2 horizontal: varios cortes cercanos.
     {
       x: Math.floor(width * 0.590),
       y: Math.floor(height * 0.295),
@@ -603,6 +610,7 @@ function makeFixedSingleFallbacks(bitmap) {
       height: Math.floor(height * 0.115),
       kind: 'fixed-single-fwc-wide',
       score: 1900,
+      allowedPrefixes: ['FWC'],
     },
     {
       x: Math.floor(width * 0.625),
@@ -611,6 +619,7 @@ function makeFixedSingleFallbacks(bitmap) {
       height: Math.floor(height * 0.090),
       kind: 'fixed-single-fwc-tight',
       score: 1860,
+      allowedPrefixes: ['FWC'],
     },
     {
       x: Math.floor(width * 0.540),
@@ -619,9 +628,8 @@ function makeFixedSingleFallbacks(bitmap) {
       height: Math.floor(height * 0.145),
       kind: 'fixed-single-fwc-superwide',
       score: 1820,
+      allowedPrefixes: ['FWC'],
     },
-
-    // ARG17 vertical: varios cortes cercanos.
     {
       x: Math.floor(width * 0.585),
       y: Math.floor(height * 0.145),
@@ -629,6 +637,7 @@ function makeFixedSingleFallbacks(bitmap) {
       height: Math.floor(height * 0.095),
       kind: 'fixed-single-arg-wide',
       score: 1900,
+      allowedPrefixes: ['ARG'],
     },
     {
       x: Math.floor(width * 0.620),
@@ -637,6 +646,7 @@ function makeFixedSingleFallbacks(bitmap) {
       height: Math.floor(height * 0.078),
       kind: 'fixed-single-arg-tight',
       score: 1860,
+      allowedPrefixes: ['ARG'],
     },
     {
       x: Math.floor(width * 0.545),
@@ -645,6 +655,7 @@ function makeFixedSingleFallbacks(bitmap) {
       height: Math.floor(height * 0.120),
       kind: 'fixed-single-arg-superwide',
       score: 1820,
+      allowedPrefixes: ['ARG'],
     },
   ]
     .map(zone => {
@@ -661,6 +672,7 @@ function makeFixedSingleFallbacks(bitmap) {
         rotateThumb: false,
         angle: 0,
         score: zone.score + visual.score,
+        allowedPrefixes: zone.allowedPrefixes,
         meta: {
           visual: visual.score,
           ratio: visual.ratio,
@@ -682,24 +694,30 @@ function filterVisualCandidate(candidate) {
   const edgeRatio = Number(stats.edgeRatio || 0)
   const stdGray = Number(stats.stdGray || 0)
 
-  // Filtro fuerte: fuera mantel/flor/fondos de color.
   if (coloredRatio >= 0.26) return false
   if (avgChroma >= 96) return false
-
-  // Quitar manchas sin texto.
   if (edgeRatio < 0.006) return false
   if (stdGray < 5) return false
-
-  // Mantener forma parecida a etiqueta.
   if (ratio < 0.85 || ratio > 13.5) return false
 
   return true
 }
 
 function detectVisualCandidates(bitmap) {
-  const lightCandidates = detectComponents(bitmap, 'light-pill')
-  const darkCandidates = detectComponents(bitmap, 'dark-label')
-  const neutralCandidates = detectComponents(bitmap, 'neutral-panel')
+  const lightCandidates = detectComponents(bitmap, 'light-pill').map(candidate => ({
+    ...candidate,
+    allowedPrefixes: ['FWC'],
+  }))
+
+  const darkCandidates = detectComponents(bitmap, 'dark-label').map(candidate => ({
+    ...candidate,
+    allowedPrefixes: VALID_PREFIXES.filter(prefix => prefix !== 'FWC'),
+  }))
+
+  const neutralCandidates = detectComponents(bitmap, 'neutral-panel').map(candidate => ({
+    ...candidate,
+    allowedPrefixes: VALID_PREFIXES,
+  }))
 
   const detected = uniqueZones([
     ...lightCandidates,
@@ -713,18 +731,9 @@ function detectVisualCandidates(bitmap) {
     ...addRotatedCopies(detected),
   ])
 
-  const fixed = makeFixedSingleFallbacks(bitmap)
-
-  const all = removeOverlappingRegions(
-    uniqueZones([
-      ...fixed,
-      ...withRotation,
-    ]),
-    0.52
-  )
+  return removeOverlappingRegions(withRotation, 0.52)
     .sort((a, b) => b.score - a.score)
-
-  return all.slice(0, MAX_VISUAL_CANDIDATES)
+    .slice(0, MAX_VISUAL_CANDIDATES)
 }
 
 function makeNormalCanvas(bitmap, candidate, scale = 4) {
@@ -865,152 +874,180 @@ function repairNumber(raw) {
     .replace(/[^0-9]/g, '')
 }
 
-function levenshtein(a, b) {
-  const aa = String(a || '')
-  const bb = String(b || '')
+function isValidNumber(number) {
+  const value = Number(number)
 
-  const dp = Array.from({ length: aa.length + 1 }, () =>
-    Array(bb.length + 1).fill(0)
-  )
+  return Number.isFinite(value) && value >= 1 && value <= 20
+}
 
-  for (let i = 0; i <= aa.length; i += 1) dp[i][0] = i
-  for (let j = 0; j <= bb.length; j += 1) dp[0][j] = j
+function countStopWords(cleanText) {
+  return STOP_WORDS.reduce((total, word) => {
+    if (cleanText.includes(word)) return total + 1
+    return total
+  }, 0)
+}
 
-  for (let i = 1; i <= aa.length; i += 1) {
-    for (let j = 1; j <= bb.length; j += 1) {
-      const cost = aa[i - 1] === bb[j - 1] ? 0 : 1
+function getAllowedPrefixes(candidate) {
+  const kind = String(candidate.kind || '').toLowerCase()
 
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1,
-        dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
-      )
-    }
+  if (Array.isArray(candidate.allowedPrefixes) && candidate.allowedPrefixes.length) {
+    return candidate.allowedPrefixes
   }
 
-  return dp[aa.length][bb.length]
+  if (kind.includes('fixed-single-fwc')) return ['FWC']
+  if (kind.includes('fixed-single-arg')) return ['ARG']
+  if (kind.includes('box-light')) return ['FWC']
+
+  if (kind.includes('box-dark')) {
+    return VALID_PREFIXES.filter(prefix => prefix !== 'FWC')
+  }
+
+  return VALID_PREFIXES
 }
 
-function closestPrefix(rawPrefix) {
-  const clean = String(rawPrefix || '')
-    .toUpperCase()
-    .replace(/[^A-Z]/g, '')
-
-  if (!clean) return ''
-
-  if (VALID_PREFIXES.includes(clean)) return clean
-
-  let best = ''
-  let bestDistance = Infinity
-
-  VALID_PREFIXES.forEach(prefix => {
-    const distance = levenshtein(clean, prefix)
-
-    if (distance < bestDistance) {
-      bestDistance = distance
-      best = prefix
-    }
-  })
-
-  // Permitimos error pequeño porque OCR confunde FWC/FWG/FVC, ARG/ABG, PAR/P4R.
-  if (bestDistance <= 1) return best
-
-  return ''
-}
-
-function extractCodesFromText(text, candidate) {
-  const clean = cleanOcrText(text)
-  const joined = clean.replace(/\s+/g, '')
-
+function extractExactCodes(cleanText, candidate) {
+  const allowedPrefixes = getAllowedPrefixes(candidate)
+  const prefixPart = allowedPrefixes.join('|')
   const found = []
+  const joined = cleanText.replace(/\s+/g, '')
 
-  const exactRegex = new RegExp(`(${VALID_PREFIXES.join('|')})\\s*([0-9OQDILZS]{1,2})`, 'g')
-  let exactMatch = exactRegex.exec(clean)
+  const spacedRegex = new RegExp(`\\b(${prefixPart})\\s*([0-9OQDILZS]{1,2})\\b`, 'g')
+  let spacedMatch = spacedRegex.exec(cleanText)
 
-  while (exactMatch) {
-    const prefix = exactMatch[1]
-    const number = repairNumber(exactMatch[2])
+  while (spacedMatch) {
+    const prefix = spacedMatch[1]
+    const number = repairNumber(spacedMatch[2])
 
-    if (number) found.push(`${prefix}${number}`)
+    if (isValidNumber(number)) found.push(`${prefix}${number}`)
 
-    exactMatch = exactRegex.exec(clean)
+    spacedMatch = spacedRegex.exec(cleanText)
   }
 
-  const joinedRegex = new RegExp(`(${VALID_PREFIXES.join('|')})([0-9OQDILZS]{1,2})`, 'g')
+  const joinedRegex = new RegExp(`(${prefixPart})([0-9OQDILZS]{1,2})`, 'g')
   let joinedMatch = joinedRegex.exec(joined)
 
   while (joinedMatch) {
     const prefix = joinedMatch[1]
     const number = repairNumber(joinedMatch[2])
 
-    if (number) found.push(`${prefix}${number}`)
+    if (isValidNumber(number)) found.push(`${prefix}${number}`)
 
     joinedMatch = joinedRegex.exec(joined)
   }
 
-  // Búsqueda flexible: 2-4 letras + 1-2 números.
-  const flexibleRegex = /([A-Z]{2,4})\s*([0-9OQDILZS]{1,2})/g
-  let flexMatch = flexibleRegex.exec(clean)
+  return found
+}
 
-  while (flexMatch) {
-    const prefix = closestPrefix(flexMatch[1])
-    const number = repairNumber(flexMatch[2])
+function extractControlledFuzzyCodes(cleanText, candidate) {
+  const allowedPrefixes = getAllowedPrefixes(candidate)
+  const joined = cleanText.replace(/\s+/g, '')
+  const stopWordCount = countStopWords(cleanText)
+  const found = []
 
-    if (prefix && number) {
-      found.push(`${prefix}${number}`)
+  const canUseLooseNumber = stopWordCount <= 1 || candidate.forced
+
+  if (allowedPrefixes.includes('FWC')) {
+    const fwcRegexes = [
+      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV|WC)([0-9OQDILZS]{1,2})/,
+      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV)\s+([0-9OQDILZS]{1,2})/,
+    ]
+
+    fwcRegexes.forEach(regex => {
+      const match = cleanText.match(regex) || joined.match(regex)
+      const number = repairNumber(match?.[1] || '')
+
+      if (isValidNumber(number)) found.push(`FWC${number}`)
+    })
+
+    if (canUseLooseNumber) {
+      const tokenNumber = extractLooseTokenNumber(cleanText)
+
+      if (isValidNumber(tokenNumber)) found.push(`FWC${tokenNumber}`)
+    }
+  }
+
+  if (allowedPrefixes.includes('ARG')) {
+    const argRegexes = [
+      /(?:ARG|ABG|AKG|ARC|RG|AG)([0-9OQDILZS]{1,2})/,
+      /(?:ARG|ABG|AKG|ARC|RG|AG)\s+([0-9OQDILZS]{1,2})/,
+    ]
+
+    argRegexes.forEach(regex => {
+      const match = cleanText.match(regex) || joined.match(regex)
+      const number = repairNumber(match?.[1] || '')
+
+      if (isValidNumber(number)) found.push(`ARG${number}`)
+    })
+
+    if (candidate.forced && canUseLooseNumber) {
+      const tokenNumber = extractLooseTokenNumber(cleanText)
+
+      if (isValidNumber(tokenNumber)) found.push(`ARG${tokenNumber}`)
+    }
+  }
+
+  if (allowedPrefixes.includes('PAR')) {
+    const parRegexes = [
+      /(?:PAR|P4R|FAR|PAB|P4B)([0-9OQDILZS]{1,2})/,
+      /(?:PAR|P4R|FAR|PAB|P4B)\s+([0-9OQDILZS]{1,2})/,
+    ]
+
+    parRegexes.forEach(regex => {
+      const match = cleanText.match(regex) || joined.match(regex)
+      const number = repairNumber(match?.[1] || '')
+
+      if (isValidNumber(number)) found.push(`PAR${number}`)
+    })
+  }
+
+  return found
+}
+
+function extractLooseTokenNumber(cleanText) {
+  const tokens = cleanText.split(/\s+/).filter(Boolean)
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]
+
+    const joinedMatch = token.match(/^[A-Z]{2,4}([0-9OQDILZS]{1,2})$/)
+    if (joinedMatch) {
+      const number = repairNumber(joinedMatch[1])
+      if (isValidNumber(number)) return number
     }
 
-    flexMatch = flexibleRegex.exec(clean)
-  }
+    const numberOnly = token.match(/^[0-9OQDILZS]{1,2}$/)
+    if (numberOnly) {
+      const previous = tokens[i - 1] || ''
+      const number = repairNumber(token)
 
-  const joinedFlexibleRegex = /([A-Z]{2,4})([0-9OQDILZS]{1,2})/g
-  let joinedFlexMatch = joinedFlexibleRegex.exec(joined)
-
-  while (joinedFlexMatch) {
-    const prefix = closestPrefix(joinedFlexMatch[1])
-    const number = repairNumber(joinedFlexMatch[2])
-
-    if (prefix && number) {
-      found.push(`${prefix}${number}`)
+      if (isValidNumber(number) && /^[A-Z]{2,4}$/.test(previous)) {
+        return number
+      }
     }
-
-    joinedFlexMatch = joinedFlexibleRegex.exec(joined)
   }
 
-  // Reparaciones controladas por tipo de recorte.
-  const kind = String(candidate.kind || '').toLowerCase()
+  return ''
+}
 
-  if (kind.includes('fwc') || joined.includes('FW') || joined.includes('WC')) {
-    const numberMatch = joined.match(/(?:FWC|FWG|FVC|FIC|WC|WGC|C)([0-9OQDILZS]{1,2})/)
-    const number = repairNumber(numberMatch?.[1] || '')
+function extractCodesFromText(text, candidate) {
+  const clean = cleanOcrText(text)
 
-    if (number) found.push(`FWC${number}`)
-  }
+  if (!clean) return []
 
-  if (kind.includes('arg') || joined.includes('ARG') || joined.includes('RG')) {
-    const numberMatch = joined.match(/(?:ARG|ABG|AKG|RG|AG)([0-9OQDILZS]{1,2})/)
-    const number = repairNumber(numberMatch?.[1] || '')
+  const exact = extractExactCodes(clean, candidate)
+  const fuzzy = exact.length ? [] : extractControlledFuzzyCodes(clean, candidate)
 
-    if (number) found.push(`ARG${number}`)
-  }
-
-  if (kind.includes('par') || joined.includes('PAR')) {
-    const numberMatch = joined.match(/(?:PAR|P4R|FAR|PAB)([0-9OQDILZS]{1,2})/)
-    const number = repairNumber(numberMatch?.[1] || '')
-
-    if (number) found.push(`PAR${number}`)
-  }
-
-  return [...new Set(found.map(normalizeCode))]
+  return [...new Set([...exact, ...fuzzy].map(normalizeCode))]
     .filter(code => /^[A-Z]{3}[0-9]{1,2}$/.test(code))
+    .filter(code => isValidNumber(code.replace(/^[A-Z]{3}/, '')))
 }
 
 async function recognizeCandidate(recognize, bitmap, candidate, index) {
   const originalCanvas = candidateToCanvas(bitmap, candidate, candidate.forced ? 5 : 4)
 
-  const modes = index < 6
-    ? ['normal', 'contrast', 'binary']
-    : ['normal', 'contrast']
+  const modes = candidate.forced || index < 4
+    ? ['contrast', 'normal']
+    : ['contrast']
 
   let best = {
     codes: [],
@@ -1060,58 +1097,61 @@ function buildDebugLabel(candidate, index, detection) {
   const meta = candidate.meta || {}
   const angle = normalizeAngle(candidate.angle || 0)
   const codes = candidate.codes || []
+  const raw = cleanOcrText(candidate.ocrRawText || '')
 
   return [
-    `DBG${index + 1}`,
+    `ZONA ${index + 1}`,
     detection.mode,
-    codes.length ? `CODE:${codes.join(',')}` : 'NO_CODE',
+    codes.length ? `CODIGO ${codes.join(',')}` : 'SIN CODIGO',
     candidate.kind || 'unknown',
     candidate.rotateThumb ? 'ROT' : '',
     candidate.forced ? 'FORCED' : '',
-    `score${Math.round(candidate.score || 0)}`,
-    angle ? `ang${angle}` : '',
-    `x${Math.round(candidate.x)}`,
-    `y${Math.round(candidate.y)}`,
-    `w${Math.round(candidate.width)}`,
-    `h${Math.round(candidate.height)}`,
-    meta.ratio !== undefined ? `r${meta.ratio}` : '',
-    meta.coloredRatio !== undefined ? `color${meta.coloredRatio}` : '',
-    meta.avgChroma !== undefined ? `chroma${meta.avgChroma}` : '',
-    candidate.ocrRawText ? `raw:${cleanOcrText(candidate.ocrRawText)}` : '',
+    `score ${Math.round(candidate.score || 0)}`,
+    angle ? `ang ${angle}` : '',
+    `x ${Math.round(candidate.x)}`,
+    `y ${Math.round(candidate.y)}`,
+    `w ${Math.round(candidate.width)}`,
+    `h ${Math.round(candidate.height)}`,
+    meta.ratio !== undefined ? `r ${meta.ratio}` : '',
+    meta.coloredRatio !== undefined ? `color ${meta.coloredRatio}` : '',
+    meta.avgChroma !== undefined ? `chroma ${meta.avgChroma}` : '',
+    raw ? `raw ${raw}` : '',
   ]
     .filter(Boolean)
-    .join(' ')
+    .join(' | ')
 }
 
 function buildReading(bitmap, candidate, index, detection) {
   const codes = candidate.codes || []
-  const label = buildDebugLabel(candidate, index, detection)
+  const debugLabel = buildDebugLabel(candidate, index, detection)
 
   return {
-    id: `debug-code-candidate-${index}`,
+    id: `candidate-${index}`,
     confidence: codes.length
       ? Math.max(50, Math.round(candidate.ocrConfidence || 0))
       : Math.max(1, 99 - index),
-    rawText: codes.length ? codes.join(' ') : label,
+    rawText: codes.length ? codes.join(' ') : '',
+    debugText: debugLabel,
     region: clampZone(bitmap, candidate),
     thumbUrl: candidate.thumbUrl || canvasToUrl(candidateToCanvas(bitmap, candidate, 3)),
     manualCode: '',
   }
 }
 
-function estimateMode(candidates) {
-  const forcedCount = candidates.filter(candidate => candidate.forced).length
-  const nonForcedCount = candidates.length - forcedCount
+function pickOcrTargets(visualCandidates, fixedCandidates) {
+  const primary = visualCandidates.slice(0, MAX_PRIMARY_OCR)
 
-  if (nonForcedCount >= 12) return 'MULTI'
-  return 'DEBUG'
+  return uniqueZones([
+    ...primary,
+    ...fixedCandidates.slice(0, MAX_FALLBACK_OCR),
+  ]).slice(0, MAX_PRIMARY_OCR + MAX_FALLBACK_OCR)
 }
 
 export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
   const visualCandidates = detectVisualCandidates(bitmap)
-  const mode = estimateMode(visualCandidates)
+  const fixedCandidates = makeFixedSingleFallbacks(bitmap)
 
-  const ocrTargets = visualCandidates.slice(0, MAX_OCR_CANDIDATES)
+  const ocrTargets = pickOcrTargets(visualCandidates, fixedCandidates)
   const enriched = []
 
   for (let i = 0; i < ocrTargets.length; i += 1) {
@@ -1128,7 +1168,8 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   }
 
   const untouched = visualCandidates
-    .slice(MAX_OCR_CANDIDATES)
+    .filter(candidate => !ocrTargets.some(target => regionIoU(target, candidate) > 0.72))
+    .slice(0, MAX_DEBUG_RESULTS)
     .map(candidate => ({
       ...candidate,
       codes: [],
@@ -1157,18 +1198,19 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   const finalCandidates = sorted.slice(0, MAX_DEBUG_RESULTS)
 
   const detection = {
-    mode,
+    mode: 'DEBUG',
     visualCount: visualCandidates.length,
     ocrCount: ocrTargets.length,
   }
 
   if (DEBUG_DETECTOR) {
-    console.log('DEBUG BOX FIRST OCR DETECTOR:', {
-      mode,
+    console.log('DEBUG STRICT PREFIX OCR DETECTOR:', {
       visualCount: visualCandidates.length,
+      fixedCount: fixedCandidates.length,
       ocrCount: ocrTargets.length,
       candidates: finalCandidates.map(candidate => ({
         kind: candidate.kind,
+        allowedPrefixes: getAllowedPrefixes(candidate),
         codes: candidate.codes,
         raw: candidate.ocrRawText,
         confidence: candidate.ocrConfidence,
@@ -1186,8 +1228,7 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
 
   const readings = finalCandidates.map((candidate, index) =>
     buildReading(bitmap, candidate, index, detection)
-  
-                                      )
+  )
 
   const grouped = classifyZoneReadings(readings, stickers)
 

@@ -20,7 +20,10 @@ async function recognizeZone(recognize, bitmap, zone, zoneIndex) {
   const ctx = workerCanvas.getContext('2d')
   ctx.drawImage(bitmap, zone.x, zone.y, zone.width, zone.height, 0, 0, workerCanvas.width, workerCanvas.height)
 
-  const result = await recognize(workerCanvas, 'eng', {
+  // Convertimos el canvas a un Data URL (formato seguro para Tesseract)
+  const imageDataUrl = workerCanvas.toDataURL('image/jpeg', 1.0)
+
+  const result = await recognize(imageDataUrl, 'eng', {
     rotateAuto: true,
     tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
   })
@@ -61,8 +64,17 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
     return { grouped, regions: primaryRegions }
   }
 
+  // Crear un canvas para el fallback completo
+  const fallbackCanvas = document.createElement('canvas')
+  fallbackCanvas.width = bitmap.width
+  fallbackCanvas.height = bitmap.height
+  const fallbackCtx = fallbackCanvas.getContext('2d')
+  fallbackCtx.drawImage(bitmap, 0, 0)
+  
+  const fallbackDataUrl = fallbackCanvas.toDataURL('image/jpeg', 1.0)
+
   // OCR de texto completo como red de seguridad en fotos simples (1 estampa).
-  const fullResult = await recognize(bitmap, 'eng', {
+  const fullResult = await recognize(fallbackDataUrl, 'eng', {
     rotateAuto: true,
     tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
   })

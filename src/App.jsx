@@ -490,6 +490,8 @@ function App() {
   const [albumFilter, setAlbumFilter] = useState(() => localStorage.getItem(ALBUM_FILTER_KEY) || 'all')
   const [targetStickerCode, setTargetStickerCode] = useState('')
   const [targetStickerTransition, setTargetStickerTransition] = useState(null)
+  const [lastMissingAction, setLastMissingAction] = useState(null)
+  const [lastDuplicateAction, setLastDuplicateAction] = useState(null)
   const [highlightedTabId, setHighlightedTabId] = useState('')
   const [isSoundEnabled, setIsSoundEnabled] = useState(
     () => localStorage.getItem(SOUND_ENABLED_KEY) !== 'false',
@@ -760,16 +762,23 @@ function App() {
       const currentStickerState = currentCollection[sticker.code] ?? {
         owned: false,
         duplicates: 0,
+        pasted: false,
       }
-
+      setLastMissingAction({ code: sticker.code, previousState: currentStickerState })
       return pruneCollectionEntry(currentCollection, sticker.code, {
         ...currentStickerState,
         owned: true,
       })
     })
     setSelectedSectionId(sectionId)
-    setTargetStickerCode(sticker.code)
+    setTargetStickerCode('')
     setTargetStickerTransition(null)
+    const stickerLabel = stickerLabelByCode[sticker.code] || sticker.code
+    setActionHistory((current) => ({
+      ...current,
+      addedOwned: [`Agrego ${stickerLabel}`, ...current.addedOwned].slice(0, HISTORY_MAX),
+      missingResolved: [`Corrección: ${stickerLabel}`, ...current.missingResolved].slice(0, HISTORY_MAX),
+    }))
     pulseTab('album')
     setActiveTab('album')
   }
@@ -778,10 +787,6 @@ function App() {
     const sectionId = sticker.teamCode
       ? `team-${sticker.teamCode}`
       : `section-${sticker.section || 'general'}`
-    const currentDuplicates = collection[sticker.code]?.duplicates ?? 0
-    const fromCount = currentDuplicates + 1
-    const toCount = Math.max(0, currentDuplicates - 1) + 1
-
     playAppSound('duplicate')
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[sticker.code]
@@ -790,6 +795,7 @@ function App() {
         return currentCollection
       }
 
+      setLastDuplicateAction({ code: sticker.code, previousState: currentStickerState })
       return pruneCollectionEntry(currentCollection, sticker.code, {
         owned: currentStickerState.owned,
         duplicates: Math.max(0, currentStickerState.duplicates - 1),
@@ -797,12 +803,8 @@ function App() {
       })
     })
     setSelectedSectionId(sectionId)
-    setTargetStickerCode(sticker.code)
-    setTargetStickerTransition({
-      code: sticker.code,
-      fromCount,
-      toCount,
-    })
+    setTargetStickerCode('')
+    setTargetStickerTransition(null)
     pulseTab('album')
     setActiveTab('album')
   }
@@ -1050,6 +1052,21 @@ function App() {
     setToast('Colección reiniciada.')
   }
 
+
+  const handleRevertLastMissingAction = () => {
+    if (!lastMissingAction) return
+    setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastMissingAction.code, lastMissingAction.previousState))
+    setLastMissingAction(null)
+    setToast('Se revirtió el último cambio en faltantes.')
+  }
+
+  const handleRevertLastDuplicateAction = () => {
+    if (!lastDuplicateAction) return
+    setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastDuplicateAction.code, lastDuplicateAction.previousState))
+    setLastDuplicateAction(null)
+    setToast('Se revirtió el último cambio en repetidas.')
+  }
+
   const pageProps = {
     stickers,
     teams,
@@ -1076,6 +1093,10 @@ function App() {
     onShareWhatsApp: handleShareWhatsApp,
     onNavigate: handleTabChange,
     onPageTurnSound: () => playAppSound('page'),
+    onRevertLastMissingAction: handleRevertLastMissingAction,
+    onRevertLastDuplicateAction: handleRevertLastDuplicateAction,
+    canRevertMissingAction: Boolean(lastMissingAction),
+    canRevertDuplicateAction: Boolean(lastDuplicateAction),
   }
 
   const currentInfoPage = infoPages[normalizePathname(window.location.pathname)]

@@ -2,12 +2,12 @@ import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_OCR = true
 
-const OCR_SCALE = 8
-const OCR_MIN_WIDTH = 26
-const OCR_MIN_HEIGHT = 10
+const OCR_SCALE = 9
+const OCR_MIN_WIDTH = 24
+const OCR_MIN_HEIGHT = 9
 
-const MAX_OCR_CANDIDATES = 16
-const OCR_TIME_LIMIT_MS = 16000
+const MAX_OCR_CANDIDATES = 20
+const OCR_TIME_LIMIT_MS = 18000
 
 const COMMON_FALLBACK_PREFIXES = [
   'FWC',
@@ -154,6 +154,19 @@ function sanitizeText(text) {
     'MADE',
     'WWW',
     'COM',
+    'MANUFACTURED',
+    'UNDER',
+    'LICENCE',
+    'LICENSE',
+    'TRADEMARKS',
+    'COPYRIGHTS',
+    'TOURNAMENTS',
+    'EVENTS',
+    'LOGOS',
+    'BRAND',
+    'ELEMENTS',
+    'DESIGNS',
+    'NAMES',
   ]
 
   let clean = String(text || '').toUpperCase()
@@ -167,7 +180,6 @@ function sanitizeText(text) {
 
 function buildTextCandidates(rawText) {
   const text = sanitizeText(rawText)
-
   const candidates = []
 
   text
@@ -215,7 +227,7 @@ function extractValidCodesFromText(rawText, validStickerData) {
       'g'
     )
 
-    const compactRegex = new RegExp(
+    const compactExactRegex = new RegExp(
       `^(${prefixes})([0-9OQDISBLZG]{1,3})$`
     )
 
@@ -239,10 +251,7 @@ function extractValidCodesFromText(rawText, validStickerData) {
     }
 
     const compact = normalizeRaw(source)
-    const exactMatch = compact.match(compactRegex)
-    const startMatch = compact.match(compactStartRegex)
-
-    const compactMatch = exactMatch || startMatch
+    const compactMatch = compact.match(compactExactRegex) || compact.match(compactStartRegex)
 
     if (compactMatch) {
       const prefix = compactMatch[1]
@@ -295,7 +304,7 @@ function isReadableZone(bitmap, zone) {
   )
 }
 
-function expandZone(bitmap, zone, amountX = 0.12, amountY = 0.20) {
+function expandZone(bitmap, zone, amountX = 0.12, amountY = 0.18) {
   const safeZone = clampZone(bitmap, zone)
 
   const extraX = Math.floor(safeZone.width * amountX)
@@ -360,7 +369,7 @@ function removeOverlappingRegions(regions) {
   const kept = []
 
   sorted.forEach(region => {
-    const overlaps = kept.some(existing => regionIoU(existing, region) > 0.45)
+    const overlaps = kept.some(existing => regionIoU(existing, region) > 0.42)
 
     if (!overlaps) {
       kept.push(region)
@@ -394,7 +403,7 @@ function workerCanvasToUrl(bitmap, zone) {
   return c.toDataURL('image/jpeg', 0.86)
 }
 
-function buildOcrCanvas(bitmap, zone, mode = 'light', scale = OCR_SCALE) {
+function buildOcrCanvas(bitmap, zone, mode = 'pill', scale = OCR_SCALE) {
   const safeZone = clampZone(bitmap, zone)
 
   if (!isReadableZone(bitmap, safeZone)) return null
@@ -445,19 +454,27 @@ function buildOcrCanvas(bitmap, zone, mode = 'light', scale = OCR_SCALE) {
     const gray = data[i]
     let value = gray
 
+    if (mode === 'pill') {
+      // Cápsula blanca + letras grises: deja la cápsula blanca y vuelve letras/panel negros.
+      value = gray >= 178 ? 255 : 0
+    }
+
+    if (mode === 'pill-soft') {
+      value = gray >= 160 ? 255 : 0
+    }
+
+    if (mode === 'dark-label') {
+      // Etiqueta gris/oscura + letras blancas: invierte para OCR.
+      value = gray >= 145 ? 0 : 255
+    }
+
     if (mode === 'contrast') {
       value = ((gray - avgGray) * 3.2) + avgGray
       value = Math.max(0, Math.min(255, value))
     }
 
-    if (mode === 'light') {
-      // Fondo blanco/claro + letras grises.
+    if (mode === 'avg-light') {
       value = gray > avgGray - 8 ? 255 : 0
-    }
-
-    if (mode === 'dark') {
-      // Fondo gris/oscuro + letras blancas.
-      value = gray > avgGray ? 0 : 255
     }
 
     data[i] = value
@@ -487,6 +504,7 @@ async function runOcrAttempt(recognize, bitmap, candidate, mode, pageSegMode = 7
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
       tessedit_pageseg_mode: String(pageSegMode),
       preserve_interword_spaces: '1',
+      user_defined_dpi: '300',
     })
 
     return {
@@ -521,22 +539,30 @@ function getPixelInfo(data, index) {
 }
 
 function createMaskClassifier(kind) {
-  if (kind === 'light') {
+  if (kind === 'pill') {
     return ({ gray, chroma }) => (
-      gray >= 150 &&
+      gray >= 170 &&
       gray <= 255 &&
-      chroma <= 68
+      chroma <= 75
+    )
+  }
+
+  if (kind === 'dark-panel') {
+    return ({ gray, chroma }) => (
+      gray >= 65 &&
+      gray <= 170 &&
+      chroma <= 55
     )
   }
 
   return ({ gray, chroma }) => (
-    gray >= 50 &&
-    gray <= 170 &&
-    chroma <= 60
+    gray >= 45 &&
+    gray <= 150 &&
+    chroma <= 65
   )
 }
 
-function componentToCandidate(bitmap, component, scale, kind, imageArea) {
+function componentToSmallLabelCandidate(bitmap, component, scale, kind, imageArea) {
   const boxW = component.maxX - component.minX + 1
   const boxH = component.maxY - component.minY + 1
   const area = boxW * boxH
@@ -548,28 +574,28 @@ function componentToCandidate(bitmap, component, scale, kind, imageArea) {
   const originalW = Math.floor(boxW / scale)
   const originalH = Math.floor(boxH / scale)
 
-  if (originalW < 26 || originalH < 9) return null
-  if (originalW > bitmap.width * 0.38) return null
-  if (originalH > bitmap.height * 0.16) return null
+  if (originalW < 24 || originalH < 8) return null
+  if (originalW > bitmap.width * 0.34) return null
+  if (originalH > bitmap.height * 0.11) return null
 
-  if (ratio < 1.45 || ratio > 12) return null
+  if (ratio < 1.4 || ratio > 12.5) return null
   if (fillRatio < 0.16) return null
 
   const originalArea = originalW * originalH
   const imageAreaRatio = originalArea / Math.max(1, imageArea)
 
-  if (imageAreaRatio < 0.00018 || imageAreaRatio > 0.035) return null
+  if (imageAreaRatio < 0.00015 || imageAreaRatio > 0.03) return null
 
   let score = 100
 
   score -= Math.abs(ratio - 3.8) * 4
   score += Math.min(18, fillRatio * 18)
 
-  if (kind === 'light') score += 10
-  if (kind === 'dark') score += 8
+  if (kind === 'pill') score += 18
+  if (kind === 'dark-label') score += 16
 
-  if (originalH >= 12 && originalH <= 48) score += 14
-  if (originalW >= 38 && originalW <= 180) score += 14
+  if (originalH >= 10 && originalH <= 45) score += 16
+  if (originalW >= 34 && originalW <= 190) score += 16
 
   const baseZone = {
     x: originalX,
@@ -578,9 +604,9 @@ function componentToCandidate(bitmap, component, scale, kind, imageArea) {
     height: originalH,
   }
 
-  const expanded = kind === 'light'
-    ? expandZone(bitmap, baseZone, 0.08, 0.15)
-    : expandZone(bitmap, baseZone, 0.14, 0.22)
+  const expanded = kind === 'pill'
+    ? expandZone(bitmap, baseZone, 0.08, 0.14)
+    : expandZone(bitmap, baseZone, 0.14, 0.20)
 
   return {
     ...expanded,
@@ -589,8 +615,47 @@ function componentToCandidate(bitmap, component, scale, kind, imageArea) {
   }
 }
 
+function componentToDarkPanelTopCandidate(bitmap, component, scale, imageArea) {
+  const boxW = component.maxX - component.minX + 1
+  const boxH = component.maxY - component.minY + 1
+  const area = boxW * boxH
+  const fillRatio = component.count / Math.max(1, area)
+  const ratio = boxW / Math.max(1, boxH)
+
+  const originalX = Math.floor(component.minX / scale)
+  const originalY = Math.floor(component.minY / scale)
+  const originalW = Math.floor(boxW / scale)
+  const originalH = Math.floor(boxH / scale)
+
+  const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
+
+  // Panel gris grande de la parte derecha de la estampa trasera.
+  if (originalW < bitmap.width * 0.12) return null
+  if (originalW > bitmap.width * 0.55) return null
+  if (originalH < bitmap.height * 0.16) return null
+  if (originalH > bitmap.height * 0.65) return null
+  if (ratio < 0.25 || ratio > 1.5) return null
+  if (fillRatio < 0.28) return null
+  if (imageAreaRatio < 0.015 || imageAreaRatio > 0.24) return null
+
+  const codeZone = {
+    x: Math.floor(originalX + originalW * 0.08),
+    y: Math.floor(originalY + originalH * 0.025),
+    width: Math.floor(originalW * 0.82),
+    height: Math.floor(originalH * 0.145),
+  }
+
+  const expanded = expandZone(bitmap, codeZone, 0.04, 0.10)
+
+  return {
+    ...expanded,
+    kind: 'pill',
+    score: 220,
+  }
+}
+
 function detectComponents(bitmap, kind) {
-  const maxW = 720
+  const maxW = 760
   const scale = Math.min(1, maxW / bitmap.width)
 
   const w = Math.max(1, Math.floor(bitmap.width * scale))
@@ -673,19 +738,27 @@ function detectComponents(bitmap, kind) {
         })
       }
 
-      const candidate = componentToCandidate(
-        bitmap,
-        {
-          minX,
-          maxX,
-          minY,
-          maxY,
-          count,
-        },
-        scale,
-        kind,
-        imageArea
-      )
+      const component = {
+        minX,
+        maxX,
+        minY,
+        maxY,
+        count,
+      }
+
+      let candidate = null
+
+      if (kind === 'pill') {
+        candidate = componentToSmallLabelCandidate(bitmap, component, scale, 'pill', imageArea)
+      }
+
+      if (kind === 'dark-label') {
+        candidate = componentToSmallLabelCandidate(bitmap, component, scale, 'dark-label', imageArea)
+      }
+
+      if (kind === 'dark-panel') {
+        candidate = componentToDarkPanelTopCandidate(bitmap, component, scale, imageArea)
+      }
 
       if (candidate && isReadableZone(bitmap, candidate)) {
         candidates.push(candidate)
@@ -696,48 +769,52 @@ function detectComponents(bitmap, kind) {
   return candidates
 }
 
-function addManualSearchRegions(bitmap) {
+function addSingleStickerBackupRegions(bitmap) {
   const { width, height } = bitmap
 
-  // Estas regiones son respaldo para fotos como la tuya:
-  // una estampa grande centrada con el código arriba a la derecha.
   return [
+    // Muy ajustada para la cápsula FWC 2 de tu foto individual.
     {
-      x: Math.floor(width * 0.62),
-      y: Math.floor(height * 0.34),
-      width: Math.floor(width * 0.24),
-      height: Math.floor(height * 0.075),
-      kind: 'light',
-      score: 145,
+      x: Math.floor(width * 0.615),
+      y: Math.floor(height * 0.315),
+      width: Math.floor(width * 0.255),
+      height: Math.floor(height * 0.065),
+      kind: 'pill',
+      score: 260,
     },
+
     {
-      x: Math.floor(width * 0.59),
-      y: Math.floor(height * 0.31),
-      width: Math.floor(width * 0.31),
-      height: Math.floor(height * 0.12),
-      kind: 'light',
-      score: 130,
+      x: Math.floor(width * 0.595),
+      y: Math.floor(height * 0.300),
+      width: Math.floor(width * 0.315),
+      height: Math.floor(height * 0.095),
+      kind: 'pill',
+      score: 245,
     },
+
     {
-      x: Math.floor(width * 0.56),
-      y: Math.floor(height * 0.28),
-      width: Math.floor(width * 0.36),
-      height: Math.floor(height * 0.17),
-      kind: 'light',
-      score: 110,
+      x: Math.floor(width * 0.560),
+      y: Math.floor(height * 0.285),
+      width: Math.floor(width * 0.385),
+      height: Math.floor(height * 0.135),
+      kind: 'pill',
+      score: 230,
     },
   ].filter(region => isReadableZone(bitmap, region))
 }
 
 function detectCodeLabelCandidates(bitmap) {
-  const lightCandidates = detectComponents(bitmap, 'light')
-  const darkCandidates = detectComponents(bitmap, 'dark')
-  const manualCandidates = addManualSearchRegions(bitmap)
+  const backupCandidates = addSingleStickerBackupRegions(bitmap)
+
+  const pillCandidates = detectComponents(bitmap, 'pill')
+  const darkPanelCandidates = detectComponents(bitmap, 'dark-panel')
+  const darkLabelCandidates = detectComponents(bitmap, 'dark-label')
 
   const candidates = uniqueZones([
-    ...manualCandidates,
-    ...lightCandidates,
-    ...darkCandidates,
+    ...backupCandidates,
+    ...darkPanelCandidates,
+    ...pillCandidates,
+    ...darkLabelCandidates,
   ])
     .filter(candidate => isReadableZone(bitmap, candidate))
 
@@ -807,15 +884,16 @@ function pickBestCandidateReadings(readings) {
 }
 
 async function recognizeCandidate(recognize, bitmap, candidate, candidateIndex, validStickerData, startedAt) {
-  const modes = candidate.kind === 'dark'
+  const modes = candidate.kind === 'dark-label'
     ? [
-        { mode: 'dark', pageSegMode: 7 },
-        { mode: 'dark', pageSegMode: 8 },
+        { mode: 'dark-label', pageSegMode: 7 },
+        { mode: 'dark-label', pageSegMode: 8 },
         { mode: 'contrast', pageSegMode: 7 },
       ]
     : [
-        { mode: 'light', pageSegMode: 7 },
-        { mode: 'light', pageSegMode: 8 },
+        { mode: 'pill', pageSegMode: 7 },
+        { mode: 'pill', pageSegMode: 8 },
+        { mode: 'pill-soft', pageSegMode: 7 },
         { mode: 'contrast', pageSegMode: 7 },
         { mode: 'original', pageSegMode: 7 },
       ]
@@ -853,7 +931,7 @@ async function recognizeCandidate(recognize, bitmap, candidate, candidateIndex, 
         id: `candidate-${candidateIndex}-${i}-${code}`,
         confidence: Number(result.confidence || 0),
         candidateScore: Number(candidate.score || 0),
-        repeatedScore: (localHits.get(code) || 1) * 15,
+        repeatedScore: (localHits.get(code) || 1) * 20,
         rawText: code,
         region: candidate,
         thumbUrl: workerCanvasToUrl(bitmap, candidate),

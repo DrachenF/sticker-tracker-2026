@@ -1,4 +1,3 @@
-
 const DEBUG_DETECTOR = true
 
 const MAX_DEBUG_CANDIDATES = 60
@@ -555,9 +554,19 @@ function buildDebugReading(bitmap, candidate, index) {
     id: `debug-candidate-${index}`,
     confidence: Math.round(candidate.score || 0),
     rawText: label,
+    normalizedText: label,
+    manualCode: '',
     region: safe,
     thumbUrl: workerCanvasToUrl(bitmap, safe),
-    manualCode: '',
+
+    // Campos defensivos para no romper el render
+    code: '',
+    matches: [],
+    candidates: [],
+    possibleMatches: [],
+    bestMatch: null,
+    reason: 'Debug detector candidate',
+    status: 'debug',
   }
 }
 
@@ -575,8 +584,8 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   return {
     grouped: {
       good: [],
-      review: debugReadings,
-      bad: [],
+      review: [],
+      bad: debugReadings,
     },
     regions: candidates.map(candidate => ({
       x: candidate.x,

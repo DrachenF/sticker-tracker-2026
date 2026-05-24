@@ -1,4 +1,3 @@
-import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_DETECTOR = true
 

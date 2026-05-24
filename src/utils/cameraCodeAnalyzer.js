@@ -20,12 +20,14 @@ async function recognizeZone(recognize, bitmap, zone, zoneIndex) {
   const ctx = workerCanvas.getContext('2d')
   ctx.drawImage(bitmap, zone.x, zone.y, zone.width, zone.height, 0, 0, workerCanvas.width, workerCanvas.height)
 
-  // Convertimos el canvas a un Data URL (formato seguro para Tesseract)
   const imageDataUrl = workerCanvas.toDataURL('image/jpeg', 1.0)
 
   const result = await recognize(imageDataUrl, 'eng', {
     rotateAuto: true,
-    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+    // 1. Añadimos un ESPACIO al final del whitelist
+    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ', 
+    // 2. Modo 11 (Sparse Text): Busca texto disperso en cualquier parte de la región
+    tessedit_pageseg_mode: '11', 
   })
 
   return {
@@ -64,7 +66,6 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
     return { grouped, regions: primaryRegions }
   }
 
-  // Crear un canvas para el fallback completo
   const fallbackCanvas = document.createElement('canvas')
   fallbackCanvas.width = bitmap.width
   fallbackCanvas.height = bitmap.height
@@ -73,22 +74,44 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   
   const fallbackDataUrl = fallbackCanvas.toDataURL('image/jpeg', 1.0)
 
-  // OCR de texto completo como red de seguridad en fotos simples (1 estampa).
+  // OCR de texto completo como red de seguridad
   const fullResult = await recognize(fallbackDataUrl, 'eng', {
     rotateAuto: true,
-    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
+    tessedit_pageseg_mode: '11', // Crucial para que lea las múltiples estampas dispersas
   })
-  const fullTextReading = {
-    id: 'fallback-full',
-    confidence: Number(fullResult?.data?.confidence ?? 0),
-    rawText: normalizeRaw(fullResult?.data?.text || ''),
-    region: { x: 0, y: 0, width: bitmap.width, height: bitmap.height },
-    thumbUrl: workerCanvasToUrl(bitmap, { x: 0, y: 0, width: bitmap.width, height: bitmap.height }),
-    manualCode: '',
+
+  const rawFullText = fullResult?.data?.text || '';
+  
+  // 3. Extraemos con Regex patrones de "3 letras + espacio opcional + números" (ej: FWC 2, PAR1)
+  const extractedCodes = rawFullText.toUpperCase().match(/[A-Z]{3}\s*\d+/g) || [];
+
+  let finalReadings = [];
+
+  if (extractedCodes.length > 0) {
+    // Si encontró múltiples códigos en toda la foto, creamos un registro separado para cada uno
+    finalReadings = extractedCodes.map((code, index) => ({
+      id: `fallback-full-${index}`,
+      confidence: Number(fullResult?.data?.confidence ?? 0),
+      rawText: code.replace(/\s+/g, ''), // Limpiamos el espacio para que quede 'FWC2'
+      region: { x: 0, y: 0, width: bitmap.width, height: bitmap.height },
+      thumbUrl: workerCanvasToUrl(bitmap, { x: 0, y: 0, width: bitmap.width, height: bitmap.height }),
+      manualCode: '',
+    }));
+  } else {
+    // Comportamiento original si el Regex falla, devolvemos el texto normalizado como último recurso
+    finalReadings = [{
+      id: 'fallback-full',
+      confidence: Number(fullResult?.data?.confidence ?? 0),
+      rawText: normalizeRaw(rawFullText),
+      region: { x: 0, y: 0, width: bitmap.width, height: bitmap.height },
+      thumbUrl: workerCanvasToUrl(bitmap, { x: 0, y: 0, width: bitmap.width, height: bitmap.height }),
+      manualCode: '',
+    }];
   }
 
   return {
-    grouped: classifyZoneReadings([fullTextReading], stickers),
+    grouped: classifyZoneReadings(finalReadings, stickers),
     regions: primaryRegions,
   }
 }

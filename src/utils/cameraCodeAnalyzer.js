@@ -1,4 +1,4 @@
-import { classifyZoneReadings, detectCodeLabelRegions } from './ocrStickerCodes'
+import { classifyZoneReadings } from './ocrStickerCodes'
 
 function normalizeRaw(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -7,9 +7,7 @@ function normalizeRaw(value) {
 function normalizeStickerCode(value) {
   const raw = normalizeRaw(value)
   const match = raw.match(/^([A-Z]{3})0*(\d{1,3})$/)
-
   if (!match) return raw
-
   return `${match[1]}${Number(match[2])}`
 }
 
@@ -25,436 +23,163 @@ function normalizeNumberLike(value) {
     .replace(/[^0-9]/g, '')
 }
 
-function getStickerCode(sticker) {
-  if (typeof sticker === 'string') return sticker
-
-  return (
-    sticker?.code ||
-    sticker?.codigo ||
-    sticker?.id ||
-    sticker?.label ||
-    sticker?.number ||
-    ''
-  )
-}
-
 function collectStickerCodes(input, output = []) {
   if (!input) return output
-
   if (typeof input === 'string' || typeof input === 'number') {
     output.push(String(input))
     return output
   }
-
   if (Array.isArray(input)) {
     input.forEach(item => collectStickerCodes(item, output))
     return output
   }
-
   if (typeof input === 'object') {
-    const directCode = getStickerCode(input)
-
-    if (directCode) {
-      output.push(String(directCode))
-    }
-
+    const directCode = input?.code || input?.codigo || input?.id || input?.label || input?.number || ''
+    if (directCode) output.push(String(directCode))
     Object.entries(input).forEach(([key, value]) => {
       output.push(String(key))
       collectStickerCodes(value, output)
     })
   }
-
   return output
 }
 
 function buildValidStickerData(stickers) {
   const stickerCodes = collectStickerCodes(stickers)
-
   const validCodes = new Set(
-    stickerCodes
-      .map(normalizeStickerCode)
-      .filter(code => /^[A-Z]{3}\d{1,3}$/.test(code))
+    stickerCodes.map(normalizeStickerCode).filter(code => /^[A-Z]{3}\d{1,3}$/.test(code))
   )
-
   const validPrefixes = Array.from(
-    new Set(
-      Array.from(validCodes)
-        .map(code => code.match(/^([A-Z]{3})\d+$/)?.[1])
-        .filter(Boolean)
-    )
+    new Set(Array.from(validCodes).map(code => code.match(/^([A-Z]{3})\d+$/)?.[1]).filter(Boolean))
   )
-
-  return {
-    validCodes,
-    validPrefixes,
-  }
+  return { validCodes, validPrefixes }
 }
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function extractValidCodesFromText(rawText, validStickerData) {
-  const { validCodes, validPrefixes } = validStickerData
-  const normalizedText = String(rawText || '').toUpperCase()
+// NUEVO PRE-PROCESADOR OPTIMIZADO (Rápido y de una sola pasada)
+function optimizeImageForOCR(bitmap) {
+  // Reducimos la imagen si es gigantesca para no matar a Tesseract
+  const MAX_DIM = 1200;
+  let scale = 1;
+  if (bitmap.width > MAX_DIM || bitmap.height > MAX_DIM) {
+    scale = MAX_DIM / Math.max(bitmap.width, bitmap.height);
+  }
 
-  if (!validPrefixes.length) return []
+  const w = Math.floor(bitmap.width * scale);
+  const h = Math.floor(bitmap.height * scale);
 
-  const prefixes = validPrefixes.map(escapeRegExp).join('|')
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bitmap, 0, 0, w, h);
 
-  const sources = [
-    normalizedText.replace(/[^A-Z0-9]+/g, ' '),
-    normalizeRaw(normalizedText),
-  ]
+  // Escala de grises con alto contraste
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+  
+  for (let i = 0; i < data.length; i += 4) {
+    // Luminancia
+    const gray = (data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114);
+    // Umbral estricto para texto negro sobre fondo blanco/gris claro
+    const value = gray > 140 ? 255 : 0; 
+    
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
 
-  const extractedCodes = []
+// EXTRACCIÓN INTELIGENTE (Ignora textos legales largos)
+function extractSmartCodes(text, validStickerData) {
+  const { validCodes, validPrefixes } = validStickerData;
+  if (!validPrefixes.length) return [];
 
-  for (const source of sources) {
-    // Busca el prefijo (sin otra letra delante), un posible espacio, y el número,
-    // asegurándose de que el número no esté inmediatamente seguido por otro posible dígito.
-    const prefixRegex = new RegExp(
-      `(^|[^A-Z])(${prefixes})\\s*([0-9OQDISBLZG]{1,3})(?![0-9OQDISBLZG])`,
-      'g'
-    )
+  const prefixes = validPrefixes.map(escapeRegExp).join('|');
+  const extracted = [];
+  
+  // Dividimos lo que leyó Tesseract línea por línea
+  const lines = text.split('\n').map(l => l.trim().toUpperCase());
 
-    let match
+  for (const line of lines) {
+    // REGLA DE ORO: Si la línea tiene más de 12 caracteres, es casi seguro 
+    // texto legal (ej. "FIFA WORLD CUP 2026"). Lo ignoramos por completo.
+    if (line.length > 12 || line.length < 4) continue;
 
-    while ((match = prefixRegex.exec(source)) !== null) {
-      const prefix = match[2]
-      const number = normalizeNumberLike(match[3])
+    // Buscamos el patrón: inicio de palabra -> prefijo -> espacio opcional -> número -> fin
+    const regex = new RegExp(`(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`, 'g');
+    let match;
 
-      if (!number) continue
+    while ((match = regex.exec(line)) !== null) {
+      const prefix = match[2];
+      const number = normalizeNumberLike(match[3]);
+      
+      if (!number) continue;
 
-      const code = normalizeStickerCode(`${prefix}${number}`)
+      const code = normalizeStickerCode(`${prefix}${number}`);
 
+      // Casos específicos a ignorar que sabemos que causan falsos positivos
+      if (line.includes('CUP 20')) continue; 
+      
       if (!validCodes.size || validCodes.has(code)) {
-        extractedCodes.push(code)
+        extracted.push(code);
       }
     }
   }
 
-  return Array.from(new Set(extractedCodes))
+  return Array.from(new Set(extracted));
 }
 
-function clampZone(bitmap, zone) {
-  const x = Math.max(0, Math.floor(zone.x || 0))
-  const y = Math.max(0, Math.floor(zone.y || 0))
-
-  const width = Math.max(1, Math.min(Math.floor(zone.width || 1), bitmap.width - x))
-  const height = Math.max(1, Math.min(Math.floor(zone.height || 1), bitmap.height - y))
-
-  return { x, y, width, height }
-}
-
-function isReadableZone(bitmap, zone) {
-  const safeZone = clampZone(bitmap, zone)
-  return safeZone.width >= 24 && safeZone.height >= 12
-}
-
-function relativeZone(parent, rx, ry, rw, rh) {
-  return {
-    x: Math.floor(parent.x + parent.width * rx),
-    y: Math.floor(parent.y + parent.height * ry),
-    width: Math.max(1, Math.floor(parent.width * rw)),
-    height: Math.max(1, Math.floor(parent.height * rh)),
-  }
-}
-
-function uniqueZones(zones) {
-  const seen = new Set()
-
-  return zones.filter(zone => {
-    const key = [
-      Math.round(zone.x || 0),
-      Math.round(zone.y || 0),
-      Math.round(zone.width || 0),
-      Math.round(zone.height || 0),
-    ].join('|')
-
-    if (seen.has(key)) return false
-
-    seen.add(key)
-    return true
-  })
-}
-
-function buildCodeCandidateZones(bitmap, zone) {
-  const safeZone = clampZone(bitmap, zone)
-
-  const candidates = uniqueZones([
-    safeZone,
-
-    // Código arriba derecha: caso horizontal un poco más amplio
-    relativeZone(safeZone, 0.45, 0.00, 0.55, 0.35),
-    relativeZone(safeZone, 0.55, 0.00, 0.45, 0.25),
-    relativeZone(safeZone, 0.60, 0.00, 0.40, 0.20),
-
-    // Si la estampa está girada 180 grados
-    relativeZone(safeZone, 0.00, 0.65, 0.55, 0.35),
-    relativeZone(safeZone, 0.00, 0.75, 0.45, 0.25),
-
-    // Posibles posiciones en estampas verticales o fotos raras
-    relativeZone(safeZone, 0.00, 0.00, 0.50, 0.30),
-    relativeZone(safeZone, 0.50, 0.70, 0.50, 0.30),
-  ])
-
-  return candidates.filter(candidate => isReadableZone(bitmap, candidate))
-}
-
-function workerCanvasToUrl(bitmap, zone) {
-  const safeZone = clampZone(bitmap, zone)
-
-  const c = document.createElement('canvas')
-  c.width = safeZone.width
-  c.height = safeZone.height
-
-  const cx = c.getContext('2d')
-  cx.drawImage(bitmap, safeZone.x, safeZone.y, safeZone.width, safeZone.height, 0, 0, safeZone.width, safeZone.height)
-
-  return c.toDataURL('image/jpeg', 0.86)
-}
-
-function buildOcrCanvas(bitmap, zone, mode = 'contrast', defaultScale = 5) {
-  const safeZone = clampZone(bitmap, zone)
-
-  // Escala dinámica (evita que recortes grandes se hagan masivos e indigeribles)
-  let scale = defaultScale
-  const maxDim = Math.max(safeZone.width, safeZone.height)
-  if (maxDim * scale > 1200) {
-    scale = Math.max(1, 1200 / maxDim)
-  }
-
-  const c = document.createElement('canvas')
-  c.width = Math.max(1, Math.floor(safeZone.width * scale))
-  c.height = Math.max(1, Math.floor(safeZone.height * scale))
-
-  const ctx = c.getContext('2d')
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-
-  ctx.drawImage(bitmap, safeZone.x, safeZone.y, safeZone.width, safeZone.height, 0, 0, c.width, c.height)
-
-  if (mode === 'original') return c
-
-  const imageData = ctx.getImageData(0, 0, c.width, c.height)
-  const data = imageData.data
-
-  let sum = 0
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114)
-    data[i] = gray // Guardo temporalmente el gris en R
-    sum += gray
-  }
-
-  // Calculamos el gris promedio para hacer contraste y umbrales dinámicos
-  const avgGray = sum / Math.max(1, data.length / 4)
-  const thresholdValue = Math.max(80, Math.min(200, avgGray * 0.95))
-
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = data[i]
-    let value = gray
-
-    if (mode === 'contrast') {
-      value = Math.round((gray - avgGray) * 2.5 + avgGray)
-      value = Math.max(0, Math.min(255, value))
-    } else if (mode === 'threshold') {
-      value = gray > thresholdValue ? 255 : 0
-    } else if (mode === 'threshold-invert') {
-      value = gray > thresholdValue ? 0 : 255
-    }
-
-    data[i] = value
-    data[i + 1] = value
-    data[i + 2] = value
-  }
-
-  ctx.putImageData(imageData, 0, 0)
-
-  return c
-}
-
-async function runOcrAttempt(recognize, bitmap, zone, mode, pageSegMode) {
-  if (!isReadableZone(bitmap, zone)) return { confidence: 0, text: '' }
-
-  const canvas = buildOcrCanvas(bitmap, zone, mode, 5)
-
-  if (canvas.width < 24 || canvas.height < 12) return { confidence: 0, text: '' }
-
-  const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9)
+// LA FUNCIÓN PRINCIPAL REESCRITA
+export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
+  const validStickerData = buildValidStickerData(stickers);
+  
+  // 1. Optimizamos toda la imagen una sola vez
+  const optimizedCanvas = optimizeImageForOCR(bitmap);
+  const dataUrl = optimizedCanvas.toDataURL('image/jpeg', 0.9);
 
   try {
-    const result = await recognize(imageDataUrl, 'eng', {
-      tessedit_pageseg_mode: String(pageSegMode)
-    })
+    // 2. Corremos Tesseract UNA VEZ. 
+    // Usamos PSM 11 ("Find as much text as possible in no particular order")
+    // Es el mejor modo para leer múltiples estampas esparcidas en una foto.
+    const result = await recognize(dataUrl, 'eng', {
+      tessedit_pageseg_mode: '11', 
+    });
 
-    return {
-      confidence: Number(result?.data?.confidence ?? 0),
-      text: String(result?.data?.text || ''),
-    }
-  } catch (error) {
-    console.warn('OCR attempt failed:', error)
-    return { confidence: 0, text: '' }
-  }
-}
+    const confidence = Number(result?.data?.confidence ?? 0);
+    const text = String(result?.data?.text || '');
 
-async function recognizeZone(recognize, bitmap, zone, zoneIndex, validStickerData) {
-  const candidateZones = buildCodeCandidateZones(bitmap, zone)
-  const attempts = []
+    // 3. Extraemos inteligentemente evitando falsos positivos
+    const extractedCodes = extractSmartCodes(text, validStickerData);
 
-  for (let i = 0; i < candidateZones.length; i += 1) {
-    const candidateZone = candidateZones[i]
-
-    if (i === 0) {
-      attempts.push({ zone: candidateZone, mode: 'original', pageSegMode: 11 })
-      attempts.push({ zone: candidateZone, mode: 'contrast', pageSegMode: 11 })
-    } else {
-      attempts.push({ zone: candidateZone, mode: 'original', pageSegMode: 7 })
-      attempts.push({ zone: candidateZone, mode: 'contrast', pageSegMode: 7 })
-      attempts.push({ zone: candidateZone, mode: 'threshold', pageSegMode: 7 })
-      attempts.push({ zone: candidateZone, mode: 'threshold-invert', pageSegMode: 7 })
-    }
-  }
-
-  let bestInvalidReading = null
-
-  for (let i = 0; i < attempts.length; i += 1) {
-    const attempt = attempts[i]
-    const result = await runOcrAttempt(recognize, bitmap, attempt.zone, attempt.mode, attempt.pageSegMode)
-    const extractedCodes = extractValidCodesFromText(result.text, validStickerData)
-
-    if (extractedCodes.length > 0) {
-      return extractedCodes.map((code, codeIndex) => ({
-        id: `zone-${zoneIndex}-${i}-${codeIndex}`,
-        confidence: result.confidence,
-        rawText: code,
-        region: attempt.zone,
-        thumbUrl: workerCanvasToUrl(bitmap, attempt.zone),
-        manualCode: '',
-      }))
-    }
-
-    const normalizedText = normalizeRaw(result.text)
-
-    if (normalizedText) {
-      const invalidReading = {
-        id: `zone-${zoneIndex}-${i}`,
-        confidence: result.confidence,
-        rawText: normalizedText,
-        region: attempt.zone,
-        thumbUrl: workerCanvasToUrl(bitmap, attempt.zone),
-        manualCode: '',
-      }
-
-      if (!bestInvalidReading || invalidReading.confidence > bestInvalidReading.confidence) {
-        bestInvalidReading = invalidReading
-      }
-    }
-  }
-
-  return bestInvalidReading ? [bestInvalidReading] : []
-}
-
-function buildFallbackRegions(bitmap) {
-  const { width, height } = bitmap
-
-  return uniqueZones([
-    { x: 0, y: 0, width, height },
-
-    // Centro de la imagen
-    {
-      x: Math.floor(width * 0.08),
-      y: Math.floor(height * 0.22),
-      width: Math.floor(width * 0.84),
-      height: Math.floor(height * 0.56),
-    },
-
-    // Zona superior derecha generalizada (para fotos tomadas de frente)
-    {
-      x: Math.floor(width * 0.4),
-      y: Math.floor(height * 0.05),
-      width: Math.floor(width * 0.55),
-      height: Math.floor(height * 0.50),
-    },
-  ]).filter(region => isReadableZone(bitmap, region))
-}
-
-async function recognizeFullImageFallback(recognize, bitmap, validStickerData) {
-  const fullZone = { x: 0, y: 0, width: bitmap.width, height: bitmap.height }
-  
-  const attempts = [
-    { zone: fullZone, mode: 'original', pageSegMode: 11 },
-    { zone: fullZone, mode: 'contrast', pageSegMode: 11 },
-    { zone: fullZone, mode: 'threshold', pageSegMode: 11 },
-  ]
-
-  let bestText = ''
-  let bestConfidence = 0
-
-  for (let i = 0; i < attempts.length; i += 1) {
-    const attempt = attempts[i]
-    const result = await runOcrAttempt(recognize, bitmap, attempt.zone, attempt.mode, attempt.pageSegMode)
-    const extractedCodes = extractValidCodesFromText(result.text, validStickerData)
-
-    if (extractedCodes.length > 0) {
-      return extractedCodes.map((code, index) => ({
-        id: `fallback-full-${i}-${index}`,
-        confidence: result.confidence,
-        rawText: code,
-        region: attempt.zone,
-        thumbUrl: workerCanvasToUrl(bitmap, attempt.zone),
-        manualCode: '',
-      }))
-    }
-
-    if (result.text && result.confidence >= bestConfidence) {
-      bestText = result.text
-      bestConfidence = result.confidence
-    }
-  }
-
-  return [
-    {
-      id: 'fallback-full',
-      confidence: bestConfidence,
-      rawText: normalizeRaw(bestText),
-      region: fullZone,
-      thumbUrl: workerCanvasToUrl(bitmap, fullZone),
+    const zoneReadings = extractedCodes.map((code, index) => ({
+      id: `ocr-result-${index}`,
+      confidence: confidence, // Confianza general de la lectura
+      rawText: code,
+      region: { x: 0, y: 0, width: bitmap.width, height: bitmap.height }, // Región global
+      thumbUrl: dataUrl,
       manualCode: '',
-    },
-  ]
-}
+    }));
 
-export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
-  const validStickerData = buildValidStickerData(stickers)
-  const primaryRegions = detectCodeLabelRegions(bitmap)
-  const fallbackRegions = buildFallbackRegions(bitmap)
-
-  const allRegions = uniqueZones([
-    ...primaryRegions,
-    ...fallbackRegions,
-  ]).filter(region => isReadableZone(bitmap, region))
-
-  const zoneReadings = []
-
-  for (let i = 0; i < allRegions.length; i += 1) {
-    const zoneResults = await recognizeZone(recognize, bitmap, allRegions[i], i, validStickerData)
-    zoneReadings.push(...zoneResults)
-  }
-
-  const grouped = classifyZoneReadings(zoneReadings, stickers)
-  const hasAnyUseful = grouped.good.length || grouped.review.length
-
-  if (hasAnyUseful) {
     return {
-      grouped,
-      regions: primaryRegions,
-    }
-  }
+      grouped: classifyZoneReadings(zoneReadings, stickers),
+      regions: [] 
+    };
 
-  const finalReadings = await recognizeFullImageFallback(recognize, bitmap, validStickerData)
-
-  return {
-    grouped: classifyZoneReadings(finalReadings, stickers),
-    regions: primaryRegions,
+  } catch (error) {
+    console.error('OCR falló:', error);
+    return {
+      grouped: classifyZoneReadings([], stickers),
+      regions: []
+    };
   }
 }

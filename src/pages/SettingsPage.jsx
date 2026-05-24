@@ -2,8 +2,7 @@ import { useState } from 'react'
 
 function SettingsPage({
   collection,
-  movementHistory,
-  recentAddedOwned,
+  actionHistory,
   onExportBackup,
   onImportBackup,
   onResetCollection,
@@ -11,10 +10,8 @@ function SettingsPage({
   onToggleSound,
 }) {
   const touchedCount = Object.keys(collection).length
-  const [showAllMovements, setShowAllMovements] = useState(false)
-  const [showAllAdded, setShowAllAdded] = useState(false)
-  const movementPreview = showAllMovements ? movementHistory : movementHistory.slice(0, 10)
-  const addedPreview = showAllAdded ? recentAddedOwned : recentAddedOwned.slice(0, 10)
+  const [expandedKey, setExpandedKey] = useState('')
+  const previewFor = (key) => (expandedKey === key ? (actionHistory[key] || []) : (actionHistory[key] || []).slice(0, 10))
 
   return (
     <div className="settings-stack">
@@ -121,55 +118,35 @@ function SettingsPage({
         </div>
       </section>
 
-      <section className="settings-card settings-card-soft">
-        <div className="settings-card-header">
-          <span className="settings-card-icon is-info" aria-hidden="true" />
-          <div>
-            <p className="page-label">Historial</p>
-            <h3>Últimos 50 movimientos</h3>
+      {[
+        ['addedOwned', 'Historial 1', 'Figuritas agregadas por primera vez'],
+        ['removedOwned', 'Historial 2', 'Figuritas quitadas del álbum'],
+        ['addedDuplicates', 'Historial 3', 'Repetidas agregadas'],
+        ['removedDuplicates', 'Historial 4', 'Repetidas quitadas'],
+        ['missingAdded', 'Historial 5', 'Faltante agregada'],
+        ['missingResolved', 'Historial 6', 'Faltante corregida (agregada y luego quitada)'],
+      ].map(([key, label, title]) => (
+        <section className="settings-card settings-card-soft" key={key}>
+          <div className="settings-card-header">
+            <span className="settings-card-icon is-info" aria-hidden="true" />
+            <div>
+              <p className="page-label">{label}</p>
+              <h3>{title}</h3>
+            </div>
           </div>
-        </div>
-        <ul className="settings-history-list">
-          {movementPreview.map((item, index) => (
-            <li key={`${item}-${index}`}>{item}</li>
-          ))}
-          {!movementPreview.length ? <li>No hay movimientos todavía.</li> : null}
-        </ul>
-        {movementHistory.length > 10 ? (
-          <button
-            type="button"
-            className="action-button action-button-ghost"
-            onClick={() => setShowAllMovements((current) => !current)}
-          >
-            {showAllMovements ? 'Mostrar menos' : 'Ver más movimientos'}
-          </button>
-        ) : null}
-      </section>
-
-      <section className="settings-card settings-card-soft">
-        <div className="settings-card-header">
-          <span className="settings-card-icon is-info" aria-hidden="true" />
-          <div>
-            <p className="page-label">Agregadas</p>
-            <h3>Últimas 50 que siguen en tu álbum</h3>
-          </div>
-        </div>
-        <ul className="settings-history-list">
-          {addedPreview.map((item, index) => (
-            <li key={`${item}-${index}`}>{item}</li>
-          ))}
-          {!addedPreview.length ? <li>No hay stickers agregados activos.</li> : null}
-        </ul>
-        {recentAddedOwned.length > 10 ? (
-          <button
-            type="button"
-            className="action-button action-button-ghost"
-            onClick={() => setShowAllAdded((current) => !current)}
-          >
-            {showAllAdded ? 'Mostrar menos' : 'Ver más agregadas'}
-          </button>
-        ) : null}
-      </section>
+          <ul className="settings-history-list">
+            {previewFor(key).map((item, index) => (
+              <li key={`${key}-${item}-${index}`}>{item}</li>
+            ))}
+            {!previewFor(key).length ? <li>No hay registros todavía.</li> : null}
+          </ul>
+          {(actionHistory[key] || []).length > 10 ? (
+            <button type="button" className="action-button action-button-ghost" onClick={() => setExpandedKey((current) => current === key ? '' : key)}>
+              {expandedKey === key ? 'Mostrar menos' : 'Ver más'}
+            </button>
+          ) : null}
+        </section>
+      ))}
 
       <section className="settings-card settings-card-soft">
         <div className="settings-card-header">

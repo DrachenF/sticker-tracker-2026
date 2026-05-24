@@ -2,7 +2,7 @@ import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_DETECTOR = true
 
-const MAX_DEBUG_CANDIDATES = 18
+const MAX_DEBUG_CANDIDATES = 22
 
 function clampZone(bitmap, zone) {
   const rawX = Math.floor(zone?.x || 0)
@@ -22,6 +22,7 @@ function clampZone(bitmap, zone) {
   )
 
   return {
+    ...zone,
     x,
     y,
     width,
@@ -31,7 +32,18 @@ function clampZone(bitmap, zone) {
 
 function isReadableZone(bitmap, zone) {
   const safe = clampZone(bitmap, zone)
-  return safe.width >= 20 && safe.height >= 8
+  return safe.width >= 18 && safe.height >= 8
+}
+
+function normalizeAngleToHorizontal(angle) {
+  let safeAngle = Number(angle || 0)
+
+  while (safeAngle > 45) safeAngle -= 90
+  while (safeAngle < -45) safeAngle += 90
+
+  if (Math.abs(safeAngle) < 2) return 0
+
+  return Number(safeAngle.toFixed(1))
 }
 
 function expandZone(bitmap, zone, amountX = 0.08, amountY = 0.12) {
@@ -41,6 +53,7 @@ function expandZone(bitmap, zone, amountX = 0.08, amountY = 0.12) {
   const extraY = Math.floor(safe.height * amountY)
 
   return clampZone(bitmap, {
+    ...safe,
     x: safe.x - extraX,
     y: safe.y - extraY,
     width: safe.width + extraX * 2,
@@ -51,12 +64,13 @@ function expandZone(bitmap, zone, amountX = 0.08, amountY = 0.12) {
 function expandLabelWide(bitmap, zone, kind) {
   const safe = clampZone(bitmap, zone)
 
-  const leftExtra = Math.floor(safe.width * 0.28)
-  const rightExtra = Math.floor(safe.width * 1.45)
-  const topExtra = Math.floor(safe.height * 0.35)
-  const bottomExtra = Math.floor(safe.height * 0.35)
+  const leftExtra = Math.floor(safe.width * 0.30)
+  const rightExtra = Math.floor(safe.width * 1.60)
+  const topExtra = Math.floor(safe.height * 0.40)
+  const bottomExtra = Math.floor(safe.height * 0.40)
 
   return clampZone(bitmap, {
+    ...safe,
     x: safe.x - leftExtra,
     y: safe.y - topExtra,
     width: safe.width + leftExtra + rightExtra,
@@ -83,6 +97,7 @@ function uniqueZones(zones) {
       Math.round(zone?.y || 0),
       Math.round(zone?.width || 0),
       Math.round(zone?.height || 0),
+      Math.round(Number(zone?.angle || 0) * 10) / 10,
       zone?.kind || '',
     ].join('|')
 
@@ -120,7 +135,7 @@ function regionIoU(a, b) {
   return intersection / union
 }
 
-function removeOverlappingRegions(regions, maxOverlap = 0.48) {
+function removeOverlappingRegions(regions, maxOverlap = 0.50) {
   const sorted = [...regions].sort((a, b) => b.score - a.score)
   const kept = []
 
@@ -142,7 +157,7 @@ function zoneCenter(zone) {
   }
 }
 
-function isInside(zone, container, paddingRatio = 0.08) {
+function isInside(zone, container, paddingRatio = 0.10) {
   const c = zoneCenter(zone)
   const padX = container.width * paddingRatio
   const padY = container.height * paddingRatio
@@ -159,32 +174,71 @@ function isTopRightOfBody(zone, body) {
   const c = zoneCenter(zone)
 
   return (
-    c.x >= body.x + body.width * 0.38 &&
-    c.x <= body.x + body.width * 1.05 &&
-    c.y >= body.y - body.height * 0.05 &&
-    c.y <= body.y + body.height * 0.42
+    c.x >= body.x + body.width * 0.34 &&
+    c.x <= body.x + body.width * 1.08 &&
+    c.y >= body.y - body.height * 0.08 &&
+    c.y <= body.y + body.height * 0.45
   )
 }
 
 function workerCanvasToUrl(bitmap, zone) {
   const safe = clampZone(bitmap, zone)
+  const angle = normalizeAngleToHorizontal(safe.angle || 0)
+
+  if (!angle) {
+    const c = document.createElement('canvas')
+    c.width = safe.width
+    c.height = safe.height
+
+    const ctx = c.getContext('2d')
+
+    ctx.drawImage(
+      bitmap,
+      safe.x,
+      safe.y,
+      safe.width,
+      safe.height,
+      0,
+      0,
+      safe.width,
+      safe.height
+    )
+
+    return c.toDataURL('image/jpeg', 0.92)
+  }
+
+  const padding = Math.ceil(Math.max(safe.width, safe.height) * 0.45)
+  const sourceW = safe.width + padding * 2
+  const sourceH = safe.height + padding * 2
+
+  const sourceX = Math.max(0, safe.x - padding)
+  const sourceY = Math.max(0, safe.y - padding)
+  const realSourceW = Math.min(sourceW, bitmap.width - sourceX)
+  const realSourceH = Math.min(sourceH, bitmap.height - sourceY)
+
+  const diagonal = Math.ceil(Math.sqrt(realSourceW * realSourceW + realSourceH * realSourceH))
 
   const c = document.createElement('canvas')
-  c.width = safe.width
-  c.height = safe.height
+  c.width = diagonal
+  c.height = diagonal
 
   const ctx = c.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, c.width, c.height)
+
+  ctx.translate(c.width / 2, c.height / 2)
+  ctx.rotate((-angle * Math.PI) / 180)
 
   ctx.drawImage(
     bitmap,
-    safe.x,
-    safe.y,
-    safe.width,
-    safe.height,
-    0,
-    0,
-    safe.width,
-    safe.height
+    sourceX,
+    sourceY,
+    realSourceW,
+    realSourceH,
+    -realSourceW / 2,
+    -realSourceH / 2,
+    realSourceW,
+    realSourceH
   )
 
   return c.toDataURL('image/jpeg', 0.92)
@@ -210,29 +264,49 @@ function getPixelInfo(data, index) {
 function createMaskClassifier(kind) {
   if (kind === 'sticker-body') {
     return ({ gray, chroma }) => (
-      gray >= 90 &&
-      gray <= 248 &&
-      chroma <= 100
+      gray >= 88 &&
+      gray <= 250 &&
+      chroma <= 105
     )
   }
 
   if (kind === 'light-label') {
     return ({ gray, chroma }) => (
-      gray >= 128 &&
+      gray >= 126 &&
       gray <= 255 &&
-      chroma <= 85
+      chroma <= 88
     )
   }
 
   if (kind === 'dark-label') {
     return ({ gray, chroma }) => (
-      gray >= 42 &&
-      gray <= 190 &&
-      chroma <= 78
+      gray >= 40 &&
+      gray <= 195 &&
+      chroma <= 82
     )
   }
 
   return () => false
+}
+
+function getComponentAngle(component) {
+  const count = Math.max(1, component.count || 1)
+
+  const meanX = component.sumX / count
+  const meanY = component.sumY / count
+
+  const covXX = (component.sumXX / count) - meanX * meanX
+  const covYY = (component.sumYY / count) - meanY * meanY
+  const covXY = (component.sumXY / count) - meanX * meanY
+
+  if (!Number.isFinite(covXX) || !Number.isFinite(covYY) || !Number.isFinite(covXY)) {
+    return 0
+  }
+
+  const angleRad = 0.5 * Math.atan2(2 * covXY, covXX - covYY)
+  const angleDeg = (angleRad * 180) / Math.PI
+
+  return normalizeAngleToHorizontal(angleDeg)
 }
 
 function measureZoneStats(bitmap, zone) {
@@ -288,7 +362,7 @@ function measureZoneStats(bitmap, zone) {
 
     if (gray <= 95) darkCount += 1
     if (gray >= 165) brightCount += 1
-    if (chroma >= 80) coloredCount += 1
+    if (chroma >= 82) coloredCount += 1
   }
 
   const count = Math.max(1, grays.length)
@@ -336,28 +410,28 @@ function scoreVisualQuality(bitmap, zone, kind) {
 
   let score = 0
 
-  if (ratio >= 1.25 && ratio <= 9.5) score += 35
-  if (ratio >= 1.8 && ratio <= 6.8) score += 25
+  if (ratio >= 1.00 && ratio <= 12.0) score += 25
+  if (ratio >= 1.50 && ratio <= 7.5) score += 26
 
-  if (stats.stdGray >= 7 && stats.stdGray <= 90) score += 22
-  if (stats.edgeRatio >= 0.025 && stats.edgeRatio <= 0.65) score += 26
+  if (stats.stdGray >= 6 && stats.stdGray <= 95) score += 20
+  if (stats.edgeRatio >= 0.012 && stats.edgeRatio <= 0.70) score += 24
 
-  if (stats.coloredRatio <= 0.26) score += 22
-  if (stats.avgChroma <= 72) score += 18
+  if (stats.coloredRatio <= 0.30) score += 18
+  if (stats.avgChroma <= 78) score += 16
 
-  if (kind.includes('light')) {
-    if (stats.avgGray >= 115) score += 20
-    if (stats.brightRatio >= 0.18) score += 10
+  if (String(kind).includes('light')) {
+    if (stats.avgGray >= 110) score += 18
+    if (stats.brightRatio >= 0.15) score += 10
   }
 
-  if (kind.includes('dark')) {
-    if (stats.avgGray >= 42 && stats.avgGray <= 190) score += 20
-    if (stats.darkRatio >= 0.08 || stats.brightRatio >= 0.08) score += 10
+  if (String(kind).includes('dark')) {
+    if (stats.avgGray >= 38 && stats.avgGray <= 198) score += 18
+    if (stats.darkRatio >= 0.06 || stats.brightRatio >= 0.06) score += 10
   }
 
-  if (stats.coloredRatio >= 0.42) score -= 70
-  if (stats.edgeRatio < 0.015) score -= 40
-  if (ratio < 1.0 || ratio > 11.5) score -= 55
+  if (stats.coloredRatio >= 0.48) score -= 70
+  if (stats.edgeRatio < 0.008) score -= 38
+  if (ratio < 0.80 || ratio > 13.5) score -= 55
 
   return {
     score: Math.round(score),
@@ -380,14 +454,14 @@ function componentToStickerBody(bitmap, component, scale, imageArea) {
   const ratio = originalW / Math.max(1, originalH)
   const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
 
-  if (originalW < bitmap.width * 0.12) return null
-  if (originalH < bitmap.height * 0.07) return null
+  if (originalW < bitmap.width * 0.11) return null
+  if (originalH < bitmap.height * 0.065) return null
   if (originalW > bitmap.width * 0.98) return null
   if (originalH > bitmap.height * 0.98) return null
 
-  if (ratio < 0.30 || ratio > 4.2) return null
-  if (fillRatio < 0.13) return null
-  if (imageAreaRatio < 0.014 || imageAreaRatio > 0.78) return null
+  if (ratio < 0.28 || ratio > 4.5) return null
+  if (fillRatio < 0.12) return null
+  if (imageAreaRatio < 0.012 || imageAreaRatio > 0.80) return null
 
   const base = {
     x: originalX,
@@ -402,11 +476,12 @@ function componentToStickerBody(bitmap, component, scale, imageArea) {
 
   score += Math.min(60, imageAreaRatio * 220)
   score += Math.min(35, fillRatio * 40)
-  score -= Math.abs(ratio - 1.45) * 6
+  score -= Math.abs(ratio - 1.45) * 5
 
   return {
     ...expanded,
     kind: 'sticker-body',
+    angle: normalizeAngleToHorizontal(component.angle || 0),
     score: Math.round(score),
     meta: {
       ratio: Number(ratio.toFixed(2)),
@@ -428,16 +503,16 @@ function componentToDirectLabels(bitmap, component, scale, kind, imageArea) {
   const originalW = Math.floor(boxW / scale)
   const originalH = Math.floor(boxH / scale)
 
-  if (originalW < 18 || originalH < 8) return []
-  if (originalW > bitmap.width * 0.36) return []
-  if (originalH > bitmap.height * 0.14) return []
+  if (originalW < 16 || originalH < 7) return []
+  if (originalW > bitmap.width * 0.38) return []
+  if (originalH > bitmap.height * 0.16) return []
 
-  if (ratio < 0.90 || ratio > 10.5) return []
-  if (fillRatio < 0.16) return []
+  if (ratio < 0.75 || ratio > 11.5) return []
+  if (fillRatio < 0.13) return []
 
   const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
 
-  if (imageAreaRatio < 0.00008 || imageAreaRatio > 0.045) return []
+  if (imageAreaRatio < 0.00006 || imageAreaRatio > 0.052) return []
 
   const base = {
     x: originalX,
@@ -446,9 +521,11 @@ function componentToDirectLabels(bitmap, component, scale, kind, imageArea) {
     height: originalH,
   }
 
+  const angle = normalizeAngleToHorizontal(component.angle || 0)
+
   const tight = kind === 'light-label'
-    ? expandZone(bitmap, base, 0.08, 0.14)
-    : expandZone(bitmap, base, 0.10, 0.16)
+    ? expandZone(bitmap, base, 0.10, 0.18)
+    : expandZone(bitmap, base, 0.12, 0.18)
 
   const wide = expandLabelWide(
     bitmap,
@@ -459,13 +536,15 @@ function componentToDirectLabels(bitmap, component, scale, kind, imageArea) {
   const rawCandidates = [
     {
       ...tight,
+      angle,
       kind: kind === 'light-label' ? 'direct-light-tight' : 'direct-dark-tight',
-      baseScore: 260,
+      baseScore: 270,
     },
     {
       ...wide,
+      angle,
       kind: kind === 'light-label' ? 'direct-light-wide' : 'direct-dark-wide',
-      baseScore: 245,
+      baseScore: 265,
     },
   ]
 
@@ -473,16 +552,17 @@ function componentToDirectLabels(bitmap, component, scale, kind, imageArea) {
     .map(candidate => {
       const visual = scoreVisualQuality(bitmap, candidate, candidate.kind)
 
-      if (visual.score < 14) return null
+      if (visual.score < 8) return null
 
       let score = candidate.baseScore
 
       score += visual.score
       score += Math.min(34, fillRatio * 36)
-      score -= Math.abs(ratio - 3.7) * 2
+      score -= Math.abs(ratio - 3.6) * 2
 
       if (candidate.kind.includes('dark')) score += 10
-      if (candidate.kind.includes('wide')) score += 16
+      if (candidate.kind.includes('wide')) score += 20
+      if (Math.abs(angle) >= 4 && Math.abs(angle) <= 28) score += 38
 
       return {
         ...candidate,
@@ -491,6 +571,7 @@ function componentToDirectLabels(bitmap, component, scale, kind, imageArea) {
           ratio: Number(ratio.toFixed(2)),
           fillRatio: Number(fillRatio.toFixed(2)),
           area: Number(imageAreaRatio.toFixed(4)),
+          angle,
           ...visual.stats,
           visual: visual.score,
         },
@@ -543,12 +624,24 @@ function detectComponents(bitmap, kind) {
       let maxY = y
       let count = 0
 
+      let sumX = 0
+      let sumY = 0
+      let sumXX = 0
+      let sumYY = 0
+      let sumXY = 0
+
       while (stack.length) {
         const current = stack.pop()
         const cx = current % w
         const cy = Math.floor(current / w)
 
         count += 1
+
+        sumX += cx
+        sumY += cy
+        sumXX += cx * cx
+        sumYY += cy * cy
+        sumXY += cx * cy
 
         minX = Math.min(minX, cx)
         maxX = Math.max(maxX, cx)
@@ -589,7 +682,14 @@ function detectComponents(bitmap, kind) {
         minY,
         maxY,
         count,
+        sumX,
+        sumY,
+        sumXX,
+        sumYY,
+        sumXY,
       }
+
+      component.angle = getComponentAngle(component)
 
       if (kind === 'sticker-body') {
         const candidate = componentToStickerBody(bitmap, component, scale, imageArea)
@@ -615,29 +715,31 @@ function detectComponents(bitmap, kind) {
 }
 
 function makeTopRightCandidatesFromBody(bitmap, body, index) {
+  const bodyAngle = normalizeAngleToHorizontal(body.angle || 0)
+
   const zones = [
     {
       name: 'wide',
-      x: 0.49,
+      x: 0.47,
       y: 0.000,
-      w: 0.50,
-      h: 0.205,
+      w: 0.52,
+      h: 0.215,
       score: 320,
     },
     {
       name: 'tight',
-      x: 0.56,
-      y: 0.015,
-      w: 0.42,
-      h: 0.155,
+      x: 0.55,
+      y: 0.010,
+      w: 0.44,
+      h: 0.165,
       score: 335,
     },
     {
       name: 'small',
-      x: 0.61,
-      y: 0.030,
-      w: 0.34,
-      h: 0.110,
+      x: 0.60,
+      y: 0.025,
+      w: 0.36,
+      h: 0.120,
       score: 325,
     },
   ]
@@ -648,37 +750,41 @@ function makeTopRightCandidatesFromBody(bitmap, body, index) {
     const crop = expandZone(
       bitmap,
       relativeZone(bitmap, body, zone.x, zone.y, zone.w, zone.h),
-      0.04,
-      0.10
+      0.05,
+      0.12
     )
 
     const darkVisual = scoreVisualQuality(bitmap, crop, 'dark-label')
     const lightVisual = scoreVisualQuality(bitmap, crop, 'light-label')
 
-    if (darkVisual.score >= 12) {
+    if (darkVisual.score >= 8) {
       candidates.push({
         ...crop,
+        angle: bodyAngle,
         kind: `body${index + 1}-${zone.name}-dark`,
-        score: zone.score + Math.round(body.score || 0) + darkVisual.score,
+        score: zone.score + Math.round(body.score || 0) + darkVisual.score + (Math.abs(bodyAngle) >= 4 ? 28 : 0),
         parentBody: body,
         meta: {
           ...darkVisual.stats,
           visual: darkVisual.score,
           ratio: darkVisual.ratio,
+          angle: bodyAngle,
         },
       })
     }
 
-    if (lightVisual.score >= 12) {
+    if (lightVisual.score >= 8) {
       candidates.push({
         ...crop,
+        angle: bodyAngle,
         kind: `body${index + 1}-${zone.name}-light`,
-        score: zone.score + Math.round(body.score || 0) + lightVisual.score - 6,
+        score: zone.score + Math.round(body.score || 0) + lightVisual.score - 6 + (Math.abs(bodyAngle) >= 4 ? 28 : 0),
         parentBody: body,
         meta: {
           ...lightVisual.stats,
           visual: lightVisual.score,
           ratio: lightVisual.ratio,
+          angle: bodyAngle,
         },
       })
     }
@@ -694,40 +800,44 @@ function boostDirectLabelsWithBodies(labels, bodies) {
 
   return labels.map(label => {
     const body = bodies.find(candidateBody =>
-      isInside(label, candidateBody, 0.10) &&
+      isInside(label, candidateBody, 0.12) &&
       isTopRightOfBody(label, candidateBody)
     )
 
     if (!body) {
       return {
         ...label,
-        score: label.score - 35,
+        score: label.score - 20,
       }
     }
 
+    const angle = normalizeAngleToHorizontal(label.angle || body.angle || 0)
+
     return {
       ...label,
+      angle,
       kind: `body-direct-${label.kind}`,
-      score: label.score + 240 + Math.round(body.score || 0),
+      score: label.score + 230 + Math.round(body.score || 0),
       parentBody: body,
     }
   })
 }
 
 function addSinglePhotoBackups(bitmap, bodies, labels) {
-  const likelySingle = bodies.length <= 4 && labels.length <= 16
+  const likelySingle = bodies.length <= 4 && labels.length <= 18
 
   if (!likelySingle) return []
 
   const { width, height } = bitmap
 
-  const backups = [
+  return [
     {
       x: Math.floor(width * 0.590),
       y: Math.floor(height * 0.125),
       width: Math.floor(width * 0.275),
       height: Math.floor(height * 0.090),
       kind: 'backup-single-arg-tight',
+      angle: 0,
       score: 900,
       forced: true,
     },
@@ -737,6 +847,7 @@ function addSinglePhotoBackups(bitmap, bodies, labels) {
       width: Math.floor(width * 0.345),
       height: Math.floor(height * 0.120),
       kind: 'backup-single-arg-wide',
+      angle: 0,
       score: 860,
       forced: true,
     },
@@ -746,6 +857,7 @@ function addSinglePhotoBackups(bitmap, bodies, labels) {
       width: Math.floor(width * 0.285),
       height: Math.floor(height * 0.085),
       kind: 'backup-single-fwc-tight',
+      angle: 0,
       score: 900,
       forced: true,
     },
@@ -755,12 +867,11 @@ function addSinglePhotoBackups(bitmap, bodies, labels) {
       width: Math.floor(width * 0.360),
       height: Math.floor(height * 0.125),
       kind: 'backup-single-fwc-wide',
+      angle: 0,
       score: 860,
       forced: true,
     },
-  ]
-
-  return backups.filter(region => isReadableZone(bitmap, region))
+  ].filter(region => isReadableZone(bitmap, region))
 }
 
 function filterCandidateNoise(candidate) {
@@ -768,12 +879,12 @@ function filterCandidateNoise(candidate) {
 
   const stats = candidate.meta || {}
 
-  if (Number(stats.coloredRatio || 0) >= 0.50) return false
-  if (Number(stats.edgeRatio || 0) < 0.010) return false
+  if (Number(stats.coloredRatio || 0) >= 0.55) return false
+  if (Number(stats.edgeRatio || 0) < 0.006) return false
 
   const ratio = candidate.width / Math.max(1, candidate.height)
 
-  if (ratio < 0.90 || ratio > 12.0) return false
+  if (ratio < 0.75 || ratio > 14.0) return false
 
   return true
 }
@@ -784,7 +895,7 @@ function detectPreciseCodeCandidates(bitmap) {
   const bodies = removeOverlappingRegions(
     rawBodies.sort((a, b) => b.score - a.score),
     0.64
-  ).slice(0, 14)
+  ).slice(0, 16)
 
   const directLightLabels = detectComponents(bitmap, 'light-label')
   const directDarkLabels = detectComponents(bitmap, 'dark-label')
@@ -821,11 +932,13 @@ function buildDebugReading(bitmap, candidate, index) {
   const safe = clampZone(bitmap, candidate)
   const parent = candidate.parentBody || null
   const meta = candidate.meta || {}
+  const angle = normalizeAngleToHorizontal(candidate.angle || 0)
 
   const label = [
     `DBG${index + 1}`,
     candidate.kind || 'unknown',
     `score${Math.round(candidate.score || 0)}`,
+    angle ? `ang${angle}` : '',
     `x${safe.x}`,
     `y${safe.y}`,
     `w${safe.width}`,
@@ -851,7 +964,7 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   const candidates = detectPreciseCodeCandidates(bitmap)
 
   if (DEBUG_DETECTOR) {
-    console.log('DEBUG precise candidates:', candidates)
+    console.log('DEBUG precise rotated candidates:', candidates)
   }
 
   const debugReadings = candidates.map((candidate, index) =>

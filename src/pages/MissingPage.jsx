@@ -38,6 +38,8 @@ function MissingPage({
   onCopyText,
   onShareWhatsApp,
   onPageTurnSound,
+  onRevertLastMissingAction,
+  canRevertMissingAction,
 }) {
   const [slideDir, setSlideDir] = useState('')
 
@@ -234,6 +236,10 @@ function MissingPage({
           >
             Compartir por WhatsApp
           </button>
+        </div>
+
+        <div className="inline-revert-row">
+          <button type="button" className="text-revert-button" onClick={onRevertLastMissingAction} disabled={!canRevertMissingAction}>Revertir último cambio</button>
         </div>
       </section>
 

@@ -61,6 +61,8 @@ const tabs = [
   { id: 'settings', label: 'Ajustes' },
 ]
 
+const navTabs = tabs.filter((tab) => tab.id !== 'camera')
+
 const infoPages = {
   '/como-usar': {
     label: 'Guía',
@@ -488,6 +490,8 @@ function App() {
   const [albumFilter, setAlbumFilter] = useState(() => localStorage.getItem(ALBUM_FILTER_KEY) || 'all')
   const [targetStickerCode, setTargetStickerCode] = useState('')
   const [targetStickerTransition, setTargetStickerTransition] = useState(null)
+  const [lastMissingAction, setLastMissingAction] = useState(null)
+  const [lastDuplicateAction, setLastDuplicateAction] = useState(null)
   const [highlightedTabId, setHighlightedTabId] = useState('')
   const [isSoundEnabled, setIsSoundEnabled] = useState(
     () => localStorage.getItem(SOUND_ENABLED_KEY) !== 'false',
@@ -497,7 +501,7 @@ function App() {
   const [collection, setCollection] = useState({})
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
+  const [toast, setToast] = useState(null)
   const [actionHistory, setActionHistory] = useState(() => {
     localStorage.removeItem('sticker-tracker-2026-movement-history')
     localStorage.removeItem('sticker-tracker-2026-added-history')
@@ -617,7 +621,7 @@ function App() {
     }
 
     const timeoutId = window.setTimeout(() => {
-      setToast('')
+      setToast(null)
     }, 400)
 
     return () => window.clearTimeout(timeoutId)
@@ -749,37 +753,35 @@ function App() {
   }
 
   const handleOpenStickerInAlbum = (sticker) => {
-    const sectionId = sticker.teamCode
-      ? `team-${sticker.teamCode}`
-      : `section-${sticker.section || 'general'}`
-
     playAppSound('add')
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[sticker.code] ?? {
         owned: false,
         duplicates: 0,
+        pasted: false,
       }
-
+      setLastMissingAction({ code: sticker.code, previousState: currentStickerState })
       return pruneCollectionEntry(currentCollection, sticker.code, {
         ...currentStickerState,
         owned: true,
       })
     })
-    setSelectedSectionId(sectionId)
-    setTargetStickerCode(sticker.code)
+    setTargetStickerCode('')
     setTargetStickerTransition(null)
-    pulseTab('album')
-    setActiveTab('album')
+    const stickerLabel = stickerLabelByCode[sticker.code] || sticker.code
+    setActionHistory((current) => ({
+      ...current,
+      addedOwned: [`Agrego ${stickerLabel}`, ...current.addedOwned].slice(0, HISTORY_MAX),
+      missingResolved: [`Corrección: ${stickerLabel}`, ...current.missingResolved].slice(0, HISTORY_MAX),
+    }))
+    setToast({
+      text: `Quitaste ${sticker.code} de tus faltantes`,
+      actionLabel: 'Revertir',
+      onAction: handleRevertMissingQuickAction,
+    })
   }
 
   const handleOpenDuplicateInAlbum = (sticker) => {
-    const sectionId = sticker.teamCode
-      ? `team-${sticker.teamCode}`
-      : `section-${sticker.section || 'general'}`
-    const currentDuplicates = collection[sticker.code]?.duplicates ?? 0
-    const fromCount = currentDuplicates + 1
-    const toCount = Math.max(0, currentDuplicates - 1) + 1
-
     playAppSound('duplicate')
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[sticker.code]
@@ -788,21 +790,20 @@ function App() {
         return currentCollection
       }
 
+      setLastDuplicateAction({ code: sticker.code, previousState: currentStickerState })
       return pruneCollectionEntry(currentCollection, sticker.code, {
         owned: currentStickerState.owned,
         duplicates: Math.max(0, currentStickerState.duplicates - 1),
         pasted: currentStickerState.pasted,
       })
     })
-    setSelectedSectionId(sectionId)
-    setTargetStickerCode(sticker.code)
-    setTargetStickerTransition({
-      code: sticker.code,
-      fromCount,
-      toCount,
+    setTargetStickerCode('')
+    setTargetStickerTransition(null)
+    setToast({
+      text: `Quitaste ${sticker.code} de tus repetidas`,
+      actionLabel: 'Revertir',
+      onAction: handleRevertDuplicateQuickAction,
     })
-    pulseTab('album')
-    setActiveTab('album')
   }
 
   const handleCloseSection = () => {
@@ -986,9 +987,9 @@ function App() {
   const handleCopyText = async (text, successMessage) => {
     try {
       await navigator.clipboard.writeText(text)
-      setToast(successMessage)
+      setToast({ text: successMessage })
     } catch {
-      setToast('No se pudo copiar el texto.')
+      setToast({ text: 'No se pudo copiar el texto.' })
     }
   }
 
@@ -1010,7 +1011,7 @@ function App() {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
-    setToast('Respaldo guardado.')
+    setToast({ text: 'Respaldo guardado.' })
   }
 
   const handleImportBackup = async (file) => {
@@ -1027,9 +1028,9 @@ function App() {
         setIsSoundEnabled(importedBackup.isSoundEnabled)
       }
 
-      setToast('Respaldo subido correctamente.')
+      setToast({ text: 'Respaldo subido correctamente.' })
     } catch (importError) {
-      setToast(importError.message || 'No se pudo importar el respaldo.')
+      setToast({ text: importError.message || 'No se pudo importar el respaldo.' })
     }
   }
 
@@ -1045,7 +1046,22 @@ function App() {
     resetCollectionState()
     setCollection({})
     setActionHistory({ addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [] })
-    setToast('Colección reiniciada.')
+    setToast({ text: 'Colección reiniciada.' })
+  }
+
+
+  const handleRevertMissingQuickAction = () => {
+    if (!lastMissingAction) return
+    setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastMissingAction.code, lastMissingAction.previousState))
+    setLastMissingAction(null)
+    setToast({ text: 'Se revirtió el último cambio en faltantes.' })
+  }
+
+  const handleRevertDuplicateQuickAction = () => {
+    if (!lastDuplicateAction) return
+    setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastDuplicateAction.code, lastDuplicateAction.previousState))
+    setLastDuplicateAction(null)
+    setToast({ text: 'Se revirtió el último cambio en repetidas.' })
   }
 
   const pageProps = {
@@ -1074,6 +1090,10 @@ function App() {
     onShareWhatsApp: handleShareWhatsApp,
     onNavigate: handleTabChange,
     onPageTurnSound: () => playAppSound('page'),
+    onRevertLastMissingAction: handleRevertMissingQuickAction,
+    onRevertLastDuplicateAction: handleRevertDuplicateQuickAction,
+    canRevertMissingAction: Boolean(lastMissingAction),
+    canRevertDuplicateAction: Boolean(lastDuplicateAction),
   }
 
   const currentInfoPage = infoPages[normalizePathname(window.location.pathname)]
@@ -1194,17 +1214,29 @@ function App() {
 
       <BottomNav
         ref={navRef}
-        tabs={tabs}
+        tabs={navTabs}
         activeTab={activeTab}
         highlightedTabId={highlightedTabId}
         onChange={handleTabChange}
       />
-      <div className="global-history-actions">
-        <button type="button" onClick={handleUndo} disabled={!undoPast.length}>↶ Deshacer</button>
-        <button type="button" onClick={handleRedo} disabled={!undoFuture.length}>↷ Rehacer</button>
-      </div>
 
-      {toast ? <div className="toast">{toast}</div> : null}
+      {toast ? (
+        <div className="toast" role="status" aria-live="polite">
+          <span>{toast.text}</span>
+          {toast.actionLabel && toast.onAction ? (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                toast.onAction()
+                setToast(null)
+              }}
+            >
+              {toast.actionLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

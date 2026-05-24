@@ -6,7 +6,7 @@ const OCR_SCALE = 9
 const OCR_MIN_WIDTH = 24
 const OCR_MIN_HEIGHT = 9
 
-const MAX_OCR_CANDIDATES = 20
+const MAX_OCR_CANDIDATES = 26
 const OCR_TIME_LIMIT_MS = 18000
 
 const COMMON_FALLBACK_PREFIXES = [
@@ -190,18 +190,18 @@ function buildTextCandidates(rawText) {
       const spaced = line.replace(/[^A-Z0-9]+/g, ' ').trim()
       const compact = normalizeRaw(line)
 
-      if (spaced && spaced.length <= 24) {
+      if (spaced && spaced.length <= 28) {
         candidates.push(spaced)
       }
 
-      if (compact && compact.length <= 24) {
+      if (compact && compact.length <= 28) {
         candidates.push(compact)
       }
     })
 
   const compactFull = normalizeRaw(text)
 
-  if (compactFull && compactFull.length <= 30) {
+  if (compactFull && compactFull.length <= 34) {
     candidates.push(compactFull)
   }
 
@@ -455,17 +455,20 @@ function buildOcrCanvas(bitmap, zone, mode = 'pill', scale = OCR_SCALE) {
     let value = gray
 
     if (mode === 'pill') {
-      // Cápsula blanca + letras grises: deja la cápsula blanca y vuelve letras/panel negros.
-      value = gray >= 178 ? 255 : 0
+      value = gray >= 176 ? 255 : 0
     }
 
     if (mode === 'pill-soft') {
-      value = gray >= 160 ? 255 : 0
+      value = gray >= 155 ? 255 : 0
     }
 
     if (mode === 'dark-label') {
-      // Etiqueta gris/oscura + letras blancas: invierte para OCR.
-      value = gray >= 145 ? 0 : 255
+      // Letras blancas sobre etiqueta gris/oscura.
+      value = gray >= 132 ? 0 : 255
+    }
+
+    if (mode === 'dark-label-soft') {
+      value = gray >= 115 ? 0 : 255
     }
 
     if (mode === 'contrast') {
@@ -541,24 +544,32 @@ function getPixelInfo(data, index) {
 function createMaskClassifier(kind) {
   if (kind === 'pill') {
     return ({ gray, chroma }) => (
-      gray >= 170 &&
+      gray >= 168 &&
       gray <= 255 &&
-      chroma <= 75
+      chroma <= 80
+    )
+  }
+
+  if (kind === 'sticker-body') {
+    return ({ gray, chroma }) => (
+      gray >= 118 &&
+      gray <= 255 &&
+      chroma <= 92
     )
   }
 
   if (kind === 'dark-panel') {
     return ({ gray, chroma }) => (
-      gray >= 65 &&
-      gray <= 170 &&
-      chroma <= 55
+      gray >= 58 &&
+      gray <= 178 &&
+      chroma <= 65
     )
   }
 
   return ({ gray, chroma }) => (
-    gray >= 45 &&
-    gray <= 150 &&
-    chroma <= 65
+    gray >= 42 &&
+    gray <= 162 &&
+    chroma <= 72
   )
 }
 
@@ -578,24 +589,24 @@ function componentToSmallLabelCandidate(bitmap, component, scale, kind, imageAre
   if (originalW > bitmap.width * 0.34) return null
   if (originalH > bitmap.height * 0.11) return null
 
-  if (ratio < 1.4 || ratio > 12.5) return null
-  if (fillRatio < 0.16) return null
+  if (ratio < 1.35 || ratio > 13) return null
+  if (fillRatio < 0.14) return null
 
   const originalArea = originalW * originalH
   const imageAreaRatio = originalArea / Math.max(1, imageArea)
 
-  if (imageAreaRatio < 0.00015 || imageAreaRatio > 0.03) return null
+  if (imageAreaRatio < 0.00013 || imageAreaRatio > 0.035) return null
 
   let score = 100
 
-  score -= Math.abs(ratio - 3.8) * 4
+  score -= Math.abs(ratio - 3.9) * 4
   score += Math.min(18, fillRatio * 18)
 
   if (kind === 'pill') score += 18
-  if (kind === 'dark-label') score += 16
+  if (kind === 'dark-label') score += 20
 
-  if (originalH >= 10 && originalH <= 45) score += 16
-  if (originalW >= 34 && originalW <= 190) score += 16
+  if (originalH >= 10 && originalH <= 55) score += 16
+  if (originalW >= 34 && originalW <= 210) score += 16
 
   const baseZone = {
     x: originalX,
@@ -606,7 +617,7 @@ function componentToSmallLabelCandidate(bitmap, component, scale, kind, imageAre
 
   const expanded = kind === 'pill'
     ? expandZone(bitmap, baseZone, 0.08, 0.14)
-    : expandZone(bitmap, baseZone, 0.14, 0.20)
+    : expandZone(bitmap, baseZone, 0.10, 0.16)
 
   return {
     ...expanded,
@@ -629,20 +640,19 @@ function componentToDarkPanelTopCandidate(bitmap, component, scale, imageArea) {
 
   const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
 
-  // Panel gris grande de la parte derecha de la estampa trasera.
-  if (originalW < bitmap.width * 0.12) return null
-  if (originalW > bitmap.width * 0.55) return null
-  if (originalH < bitmap.height * 0.16) return null
-  if (originalH > bitmap.height * 0.65) return null
-  if (ratio < 0.25 || ratio > 1.5) return null
-  if (fillRatio < 0.28) return null
-  if (imageAreaRatio < 0.015 || imageAreaRatio > 0.24) return null
+  if (originalW < bitmap.width * 0.10) return null
+  if (originalW > bitmap.width * 0.58) return null
+  if (originalH < bitmap.height * 0.10) return null
+  if (originalH > bitmap.height * 0.70) return null
+  if (ratio < 0.22 || ratio > 2.2) return null
+  if (fillRatio < 0.24) return null
+  if (imageAreaRatio < 0.010 || imageAreaRatio > 0.30) return null
 
   const codeZone = {
-    x: Math.floor(originalX + originalW * 0.08),
-    y: Math.floor(originalY + originalH * 0.025),
-    width: Math.floor(originalW * 0.82),
-    height: Math.floor(originalH * 0.145),
+    x: Math.floor(originalX + originalW * 0.06),
+    y: Math.floor(originalY + originalH * 0.020),
+    width: Math.floor(originalW * 0.88),
+    height: Math.floor(originalH * 0.165),
   }
 
   const expanded = expandZone(bitmap, codeZone, 0.04, 0.10)
@@ -652,6 +662,86 @@ function componentToDarkPanelTopCandidate(bitmap, component, scale, imageArea) {
     kind: 'pill',
     score: 220,
   }
+}
+
+function componentToStickerBodyCodeCandidates(bitmap, component, scale, imageArea) {
+  const boxW = component.maxX - component.minX + 1
+  const boxH = component.maxY - component.minY + 1
+  const area = boxW * boxH
+  const fillRatio = component.count / Math.max(1, area)
+
+  const originalX = Math.floor(component.minX / scale)
+  const originalY = Math.floor(component.minY / scale)
+  const originalW = Math.floor(boxW / scale)
+  const originalH = Math.floor(boxH / scale)
+
+  const ratio = originalW / Math.max(1, originalH)
+  const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
+
+  if (originalW < bitmap.width * 0.18) return []
+  if (originalH < bitmap.height * 0.12) return []
+  if (originalW > bitmap.width * 0.95) return []
+  if (originalH > bitmap.height * 0.95) return []
+  if (ratio < 0.45 || ratio > 2.8) return []
+  if (fillRatio < 0.22) return []
+  if (imageAreaRatio < 0.035 || imageAreaRatio > 0.65) return []
+
+  const sticker = {
+    x: originalX,
+    y: originalY,
+    width: originalW,
+    height: originalH,
+  }
+
+  const candidates = []
+
+  // Arriba derecha para stickers horizontales y verticales: ARG17, PAR1, FWC2.
+  candidates.push({
+    ...expandZone(bitmap, {
+      x: Math.floor(sticker.x + sticker.width * 0.58),
+      y: Math.floor(sticker.y + sticker.height * 0.035),
+      width: Math.floor(sticker.width * 0.36),
+      height: Math.floor(sticker.height * 0.105),
+    }, 0.04, 0.12),
+    kind: 'dark-label',
+    score: 270,
+  })
+
+  candidates.push({
+    ...expandZone(bitmap, {
+      x: Math.floor(sticker.x + sticker.width * 0.54),
+      y: Math.floor(sticker.y + sticker.height * 0.020),
+      width: Math.floor(sticker.width * 0.42),
+      height: Math.floor(sticker.height * 0.140),
+    }, 0.04, 0.10),
+    kind: 'dark-label',
+    score: 250,
+  })
+
+  candidates.push({
+    ...expandZone(bitmap, {
+      x: Math.floor(sticker.x + sticker.width * 0.58),
+      y: Math.floor(sticker.y + sticker.height * 0.035),
+      width: Math.floor(sticker.width * 0.36),
+      height: Math.floor(sticker.height * 0.105),
+    }, 0.04, 0.12),
+    kind: 'pill',
+    score: 245,
+  })
+
+  // Por si el código está en una cápsula blanca más pequeña.
+  candidates.push({
+    ...expandZone(bitmap, {
+      x: Math.floor(sticker.x + sticker.width * 0.62),
+      y: Math.floor(sticker.y + sticker.height * 0.040),
+      width: Math.floor(sticker.width * 0.29),
+      height: Math.floor(sticker.height * 0.090),
+    }, 0.05, 0.16),
+    kind: 'pill',
+    score: 240,
+  })
+
+  return candidates.filter(candidate => isReadableZone(bitmap, candidate))
 }
 
 function detectComponents(bitmap, kind) {
@@ -746,22 +836,38 @@ function detectComponents(bitmap, kind) {
         count,
       }
 
-      let candidate = null
-
       if (kind === 'pill') {
-        candidate = componentToSmallLabelCandidate(bitmap, component, scale, 'pill', imageArea)
+        const candidate = componentToSmallLabelCandidate(bitmap, component, scale, 'pill', imageArea)
+
+        if (candidate && isReadableZone(bitmap, candidate)) {
+          candidates.push(candidate)
+        }
       }
 
       if (kind === 'dark-label') {
-        candidate = componentToSmallLabelCandidate(bitmap, component, scale, 'dark-label', imageArea)
+        const candidate = componentToSmallLabelCandidate(bitmap, component, scale, 'dark-label', imageArea)
+
+        if (candidate && isReadableZone(bitmap, candidate)) {
+          candidates.push(candidate)
+        }
       }
 
       if (kind === 'dark-panel') {
-        candidate = componentToDarkPanelTopCandidate(bitmap, component, scale, imageArea)
+        const candidate = componentToDarkPanelTopCandidate(bitmap, component, scale, imageArea)
+
+        if (candidate && isReadableZone(bitmap, candidate)) {
+          candidates.push(candidate)
+        }
       }
 
-      if (candidate && isReadableZone(bitmap, candidate)) {
-        candidates.push(candidate)
+      if (kind === 'sticker-body') {
+        const bodyCandidates = componentToStickerBodyCodeCandidates(bitmap, component, scale, imageArea)
+
+        bodyCandidates.forEach(candidate => {
+          if (candidate && isReadableZone(bitmap, candidate)) {
+            candidates.push(candidate)
+          }
+        })
       }
     }
   }
@@ -769,11 +875,11 @@ function detectComponents(bitmap, kind) {
   return candidates
 }
 
-function addSingleStickerBackupRegions(bitmap) {
+function addBackupRegions(bitmap) {
   const { width, height } = bitmap
 
   return [
-    // Muy ajustada para la cápsula FWC 2 de tu foto individual.
+    // FWC2 foto horizontal: cajita blanca arriba derecha.
     {
       x: Math.floor(width * 0.615),
       y: Math.floor(height * 0.315),
@@ -782,7 +888,6 @@ function addSingleStickerBackupRegions(bitmap) {
       kind: 'pill',
       score: 260,
     },
-
     {
       x: Math.floor(width * 0.595),
       y: Math.floor(height * 0.300),
@@ -792,26 +897,47 @@ function addSingleStickerBackupRegions(bitmap) {
       score: 245,
     },
 
+    // ARG17 foto vertical: etiqueta gris arriba derecha.
     {
-      x: Math.floor(width * 0.560),
-      y: Math.floor(height * 0.285),
-      width: Math.floor(width * 0.385),
-      height: Math.floor(height * 0.135),
-      kind: 'pill',
-      score: 230,
+      x: Math.floor(width * 0.590),
+      y: Math.floor(height * 0.125),
+      width: Math.floor(width * 0.255),
+      height: Math.floor(height * 0.085),
+      kind: 'dark-label',
+      score: 275,
+    },
+    {
+      x: Math.floor(width * 0.555),
+      y: Math.floor(height * 0.110),
+      width: Math.floor(width * 0.330),
+      height: Math.floor(height * 0.115),
+      kind: 'dark-label',
+      score: 255,
+    },
+
+    // Respaldo superior derecho general.
+    {
+      x: Math.floor(width * 0.520),
+      y: Math.floor(height * 0.080),
+      width: Math.floor(width * 0.400),
+      height: Math.floor(height * 0.170),
+      kind: 'dark-label',
+      score: 180,
     },
   ].filter(region => isReadableZone(bitmap, region))
 }
 
 function detectCodeLabelCandidates(bitmap) {
-  const backupCandidates = addSingleStickerBackupRegions(bitmap)
+  const backupCandidates = addBackupRegions(bitmap)
 
-  const pillCandidates = detectComponents(bitmap, 'pill')
+  const stickerBodyCandidates = detectComponents(bitmap, 'sticker-body')
   const darkPanelCandidates = detectComponents(bitmap, 'dark-panel')
+  const pillCandidates = detectComponents(bitmap, 'pill')
   const darkLabelCandidates = detectComponents(bitmap, 'dark-label')
 
   const candidates = uniqueZones([
     ...backupCandidates,
+    ...stickerBodyCandidates,
     ...darkPanelCandidates,
     ...pillCandidates,
     ...darkLabelCandidates,
@@ -888,7 +1014,9 @@ async function recognizeCandidate(recognize, bitmap, candidate, candidateIndex, 
     ? [
         { mode: 'dark-label', pageSegMode: 7 },
         { mode: 'dark-label', pageSegMode: 8 },
+        { mode: 'dark-label-soft', pageSegMode: 7 },
         { mode: 'contrast', pageSegMode: 7 },
+        { mode: 'original', pageSegMode: 7 },
       ]
     : [
         { mode: 'pill', pageSegMode: 7 },

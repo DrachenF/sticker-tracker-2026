@@ -21,8 +21,7 @@ const CHECKLIST_PATH = '/data/checklist_mundial_2026_base_980_template.json'
 const TARGET_HIGHLIGHT_MS = 880
 const SOUND_ENABLED_KEY = 'sticker-tracker-2026-sound-enabled'
 const ALBUM_FILTER_KEY = 'sticker-tracker-album-filter'
-const MOVEMENT_HISTORY_KEY = 'sticker-tracker-2026-movement-history'
-const ADDED_HISTORY_KEY = 'sticker-tracker-2026-added-history'
+const ACTION_HISTORY_KEY = 'sticker-tracker-2026-action-history-v2'
 const SITE_URL = 'https://mi-album-2026-guatemala.vercel.app'
 const HISTORY_MAX = 50
 
@@ -499,37 +498,29 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
-  const [movementHistory, setMovementHistory] = useState(() => {
+  const [actionHistory, setActionHistory] = useState(() => {
+    localStorage.removeItem('sticker-tracker-2026-movement-history')
+    localStorage.removeItem('sticker-tracker-2026-added-history')
     try {
-      const raw = localStorage.getItem(MOVEMENT_HISTORY_KEY)
-      const parsed = raw ? JSON.parse(raw) : []
-      if (!Array.isArray(parsed)) {
-        return []
+      const raw = localStorage.getItem(ACTION_HISTORY_KEY)
+      const parsed = raw ? JSON.parse(raw) : null
+      if (!parsed || typeof parsed !== 'object') return {
+        addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [],
       }
-
-      return parsed
-        .filter((item) => typeof item === 'string' && !item.includes('undefined'))
-        .slice(0, HISTORY_MAX)
+      return {
+        addedOwned: Array.isArray(parsed.addedOwned) ? parsed.addedOwned.slice(0, HISTORY_MAX) : [],
+        removedOwned: Array.isArray(parsed.removedOwned) ? parsed.removedOwned.slice(0, HISTORY_MAX) : [],
+        addedDuplicates: Array.isArray(parsed.addedDuplicates) ? parsed.addedDuplicates.slice(0, HISTORY_MAX) : [],
+        removedDuplicates: Array.isArray(parsed.removedDuplicates) ? parsed.removedDuplicates.slice(0, HISTORY_MAX) : [],
+        missingAdded: Array.isArray(parsed.missingAdded) ? parsed.missingAdded.slice(0, HISTORY_MAX) : [],
+        missingResolved: Array.isArray(parsed.missingResolved) ? parsed.missingResolved.slice(0, HISTORY_MAX) : [],
+      }
     } catch {
-      return []
+      return { addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [] }
     }
   })
-  const [addedHistory, setAddedHistory] = useState(() => {
-    try {
-      const raw = localStorage.getItem(ADDED_HISTORY_KEY)
-      const parsed = raw ? JSON.parse(raw) : []
-      if (!Array.isArray(parsed)) {
-        return []
-      }
-
-      return parsed
-        .map(normalizeAddedHistoryEntry)
-        .filter(Boolean)
-        .slice(0, HISTORY_MAX)
-    } catch {
-      return []
-    }
-  })
+  const [undoPast, setUndoPast] = useState([])
+  const [undoFuture, setUndoFuture] = useState([])
   const [layoutMetrics, setLayoutMetrics] = useState({
     headerHeight: 0,
     navHeight: 0,
@@ -595,12 +586,8 @@ function App() {
   }, [checklist, collection])
 
   useEffect(() => {
-    localStorage.setItem(MOVEMENT_HISTORY_KEY, JSON.stringify(movementHistory))
-  }, [movementHistory])
-
-  useEffect(() => {
-    localStorage.setItem(ADDED_HISTORY_KEY, JSON.stringify(addedHistory))
-  }, [addedHistory])
+    localStorage.setItem(ACTION_HISTORY_KEY, JSON.stringify(actionHistory))
+  }, [actionHistory])
 
   useEffect(() => {
     localStorage.setItem('sticker-tracker-tab', activeTab)
@@ -889,6 +876,7 @@ function App() {
       playAppSound('add')
     }
 
+    const prevState = collection
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[code] ?? {
         owned: false,
@@ -903,28 +891,19 @@ function App() {
         pasted: nextOwned ? currentStickerState.pasted : false,
       })
     })
-
     const stickerLabel = stickerLabelByCode[code] || code
-    const actionText = isCurrentlyOwned
-      ? `Quito ${stickerLabel}`
-      : `Agrego ${stickerLabel}`
-    setMovementHistory((currentHistory) => [actionText, ...currentHistory].slice(0, HISTORY_MAX))
-
-    if (!isCurrentlyOwned) {
-      setAddedHistory((currentHistory) => {
-        const nextEntry = { code, kind: 'owned' }
-        return [
-          nextEntry,
-          ...currentHistory.filter((item) => !(item.code === code && item.kind === 'owned')),
-        ].slice(0, HISTORY_MAX)
-      })
-    }
+    setUndoPast((curr) => [{ collection: prevState, actionHistory }, ...curr].slice(0, HISTORY_MAX))
+    setUndoFuture([])
+    setActionHistory((current) => isCurrentlyOwned
+      ? { ...current, removedOwned: [`Quito ${stickerLabel}`, ...current.removedOwned].slice(0, HISTORY_MAX), missingAdded: [`Faltante agregada: ${stickerLabel}`, ...current.missingAdded].slice(0, HISTORY_MAX) }
+      : { ...current, addedOwned: [`Agrego ${stickerLabel}`, ...current.addedOwned].slice(0, HISTORY_MAX), missingResolved: [`Corrección: ${stickerLabel}`, ...current.missingResolved].slice(0, HISTORY_MAX) })
   }
 
   const handleIncrementDuplicates = (code) => {
     playAppSound('duplicate')
     pulseTab('duplicates')
 
+    const prevState = collection
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[code] ?? {
         owned: false,
@@ -939,14 +918,9 @@ function App() {
     })
 
     const stickerLabel = stickerLabelByCode[code] || code
-    setMovementHistory((currentHistory) => [`Agrego repetido ${stickerLabel}`, ...currentHistory].slice(0, HISTORY_MAX))
-    setAddedHistory((currentHistory) => {
-      const nextEntry = { code, kind: 'duplicate' }
-      return [
-        nextEntry,
-        ...currentHistory.filter((item) => !(item.code === code && item.kind === 'duplicate')),
-      ].slice(0, HISTORY_MAX)
-    })
+    setUndoPast((curr) => [{ collection: prevState, actionHistory }, ...curr].slice(0, HISTORY_MAX))
+    setUndoFuture([])
+    setActionHistory((current) => ({ ...current, addedDuplicates: [`Agrego repetida ${stickerLabel}`, ...current.addedDuplicates].slice(0, HISTORY_MAX) }))
   }
 
   const handleDecrementDuplicates = (code) => {
@@ -956,6 +930,7 @@ function App() {
       playAppSound('duplicate')
     }
 
+    const prevState = collection
     setCollection((currentCollection) => {
       const currentStickerState = currentCollection[code]
 
@@ -974,7 +949,9 @@ function App() {
 
     if (currentDuplicates > 0) {
       const stickerLabel = stickerLabelByCode[code] || code
-      setMovementHistory((currentHistory) => [`Quito de repetido ${stickerLabel}`, ...currentHistory].slice(0, HISTORY_MAX))
+      setUndoPast((curr) => [{ collection: prevState, actionHistory }, ...curr].slice(0, HISTORY_MAX))
+      setUndoFuture([])
+      setActionHistory((current) => ({ ...current, removedDuplicates: [`Quito repetida ${stickerLabel}`, ...current.removedDuplicates].slice(0, HISTORY_MAX) }))
     }
   }
 
@@ -1071,28 +1048,26 @@ function App() {
 
     resetCollectionState()
     setCollection({})
-    setMovementHistory([])
-    setAddedHistory([])
+    setActionHistory({ addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [] })
     setToast('Colección reiniciada.')
   }
 
-  const recentAddedOwned = useMemo(() => {
-    return addedHistory
-      .filter((entry) => {
-        if (entry.kind === 'duplicate') {
-          return (collection[entry.code]?.duplicates ?? 0) > 0
-        }
-
-        return collection[entry.code]?.owned ?? false
-      })
-      .map((entry) => {
-        const label = stickerLabelByCode[entry.code] || entry.code
-        return entry.kind === 'duplicate'
-          ? `Agregaste repetido ${label}`
-          : `Agregaste ${label}`
-      })
-      .slice(0, HISTORY_MAX)
-  }, [addedHistory, collection, stickerLabelByCode])
+  const handleUndo = () => {
+    if (!undoPast.length) return
+    const [last, ...rest] = undoPast
+    setUndoPast(rest)
+    setUndoFuture((current) => [{ collection, actionHistory }, ...current].slice(0, HISTORY_MAX))
+    setCollection(last.collection)
+    setActionHistory(last.actionHistory)
+  }
+  const handleRedo = () => {
+    if (!undoFuture.length) return
+    const [next, ...rest] = undoFuture
+    setUndoFuture(rest)
+    setUndoPast((current) => [{ collection, actionHistory }, ...current].slice(0, HISTORY_MAX))
+    setCollection(next.collection)
+    setActionHistory(next.actionHistory)
+  }
 
   const pageProps = {
     stickers,
@@ -1202,8 +1177,11 @@ function App() {
         return (
           <SettingsPage
             collection={collection}
-            movementHistory={movementHistory}
-            recentAddedOwned={recentAddedOwned}
+            actionHistory={actionHistory}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            canUndo={undoPast.length > 0}
+            canRedo={undoFuture.length > 0}
             onExportBackup={handleExportBackup}
             onImportBackup={handleImportBackup}
             onResetCollection={handleResetCollection}
@@ -1246,6 +1224,10 @@ function App() {
         highlightedTabId={highlightedTabId}
         onChange={handleTabChange}
       />
+      <div className="global-history-actions">
+        <button type="button" onClick={handleUndo} disabled={!undoPast.length}>↶ Deshacer</button>
+        <button type="button" onClick={handleRedo} disabled={!undoFuture.length}>↷ Rehacer</button>
+      </div>
 
       {toast ? <div className="toast">{toast}</div> : null}
     </div>

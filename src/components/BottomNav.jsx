@@ -68,7 +68,12 @@ const BottomNav = forwardRef(function BottomNav(
   ref,
 ) {
   return (
-    <nav ref={ref} className="bottom-nav" aria-label="Navegación principal">
+    <nav
+      ref={ref}
+      className="bottom-nav"
+      aria-label="Navegación principal"
+      style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+    >
       {tabs.map((tab) => (
         <button
           key={tab.id}

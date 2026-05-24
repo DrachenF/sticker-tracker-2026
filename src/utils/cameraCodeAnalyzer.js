@@ -59,10 +59,10 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// NUEVO PRE-PROCESADOR OPTIMIZADO (Rápido y de una sola pasada)
+// NUEVO PRE-PROCESADOR (Sin Binarización Destructiva)
 function optimizeImageForOCR(bitmap) {
-  // Reducimos la imagen si es gigantesca para no matar a Tesseract
-  const MAX_DIM = 1200;
+  // Reducimos la imagen si es gigantesca (Tesseract lee mejor en 1000px max)
+  const MAX_DIM = 1000;
   let scale = 1;
   if (bitmap.width > MAX_DIM || bitmap.height > MAX_DIM) {
     scale = MAX_DIM / Math.max(bitmap.width, bitmap.height);
@@ -80,92 +80,101 @@ function optimizeImageForOCR(bitmap) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, 0, 0, w, h);
 
-  // Escala de grises con alto contraste
+  // Pasamos a Escala de Grises y aumentamos levmente el contraste.
+  // IMPORTANTE: Ya NO usamos un corte brusco (blanco o negro absoluto)
+  // para evitar borrar el texto si la foto tiene mala luz.
   const imageData = ctx.getImageData(0, 0, w, h);
   const data = imageData.data;
   
   for (let i = 0; i < data.length; i += 4) {
-    // Luminancia
     const gray = (data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114);
-    // Umbral estricto para texto negro sobre fondo blanco/gris claro
-    const value = gray > 140 ? 255 : 0; 
     
-    data[i] = value;
-    data[i + 1] = value;
-    data[i + 2] = value;
+    // Aumentar levemente el contraste (+20%)
+    let contrast = ((gray - 128) * 1.2) + 128;
+    contrast = Math.max(0, Math.min(255, contrast));
+    
+    data[i] = contrast;
+    data[i + 1] = contrast;
+    data[i + 2] = contrast;
   }
   
   ctx.putImageData(imageData, 0, 0);
   return canvas;
 }
 
-// EXTRACCIÓN INTELIGENTE (Ignora textos legales largos)
+function sanitizeText(text) {
+  // Remover palabras legales de Panini que generan códigos falsos 
+  // (Esto evita nativamente errores como CUP20, PAR5, SEN5)
+  const stopWords = [
+    'FIFA', 'WORLD', 'CUP', '2026', 'PARTE', 'INTEGRANTE', 'CROMO', 
+    'LIVRO', 'ILUSTRADO', 'COLECIONAR', 'PUNTOS', 'VENTA', 'OFFICIAL', 
+    'LICENSED', 'PRODUCT', 'LOGOS', 'BRAND', 'ELEMENTS', 'DESIGNS', 
+    'TRADE', 'NAMES', 'TOURNAMENTS', 'EVENTS', 'COPYRIGHTS', 'TRADEMARKS', 
+    'MANUFACTURED', 'UNDER', 'LICENCE', 'MADE', 'BRAZIL', 'PANINI', 'BRASIL', 'LTDA'
+  ];
+  
+  let clean = String(text || '').toUpperCase();
+  
+  stopWords.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'g');
+    clean = clean.replace(regex, ' ');
+  });
+  
+  return clean;
+}
+
 function extractSmartCodes(text, validStickerData) {
   const { validCodes, validPrefixes } = validStickerData;
   if (!validPrefixes.length) return [];
 
+  const cleanText = sanitizeText(text);
+
   const prefixes = validPrefixes.map(escapeRegExp).join('|');
   const extracted = [];
   
-  // Dividimos lo que leyó Tesseract línea por línea
-  const lines = text.split('\n').map(l => l.trim().toUpperCase());
+  const regex = new RegExp(`(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`, 'g');
+  let match;
 
-  for (const line of lines) {
-    // REGLA DE ORO: Si la línea tiene más de 12 caracteres, es casi seguro 
-    // texto legal (ej. "FIFA WORLD CUP 2026"). Lo ignoramos por completo.
-    if (line.length > 12 || line.length < 4) continue;
+  while ((match = regex.exec(cleanText)) !== null) {
+    const prefix = match[2];
+    const number = normalizeNumberLike(match[3]);
+    if (!number) continue;
 
-    // Buscamos el patrón: inicio de palabra -> prefijo -> espacio opcional -> número -> fin
-    const regex = new RegExp(`(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`, 'g');
-    let match;
-
-    while ((match = regex.exec(line)) !== null) {
-      const prefix = match[2];
-      const number = normalizeNumberLike(match[3]);
-      
-      if (!number) continue;
-
-      const code = normalizeStickerCode(`${prefix}${number}`);
-
-      // Casos específicos a ignorar que sabemos que causan falsos positivos
-      if (line.includes('CUP 20')) continue; 
-      
-      if (!validCodes.size || validCodes.has(code)) {
-        extracted.push(code);
-      }
+    const code = normalizeStickerCode(`${prefix}${number}`);
+    
+    if (!validCodes.size || validCodes.has(code)) {
+      extracted.push(code);
     }
   }
 
   return Array.from(new Set(extracted));
 }
 
-// LA FUNCIÓN PRINCIPAL REESCRITA
 export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
   const validStickerData = buildValidStickerData(stickers);
-  
-  // 1. Optimizamos toda la imagen una sola vez
   const optimizedCanvas = optimizeImageForOCR(bitmap);
   const dataUrl = optimizedCanvas.toDataURL('image/jpeg', 0.9);
 
   try {
-    // 2. Corremos Tesseract UNA VEZ. 
-    // Usamos PSM 11 ("Find as much text as possible in no particular order")
-    // Es el mejor modo para leer múltiples estampas esparcidas en una foto.
+    // PSM 11 es la mejor opción para encontrar palabras "sueltas" en cualquier parte de la imagen
     const result = await recognize(dataUrl, 'eng', {
       tessedit_pageseg_mode: '11', 
     });
 
     const confidence = Number(result?.data?.confidence ?? 0);
     const text = String(result?.data?.text || '');
+    
+    // ESTO SE IMPRIMIRÁ EN TU CONSOLA. Así podrás ver qué leyó exactamente Tesseract.
+    console.log('--- LECTURA RAW OCR ---', text.replace(/\n+/g, ' '));
 
-    // 3. Extraemos inteligentemente evitando falsos positivos
     const extractedCodes = extractSmartCodes(text, validStickerData);
 
     const zoneReadings = extractedCodes.map((code, index) => ({
       id: `ocr-result-${index}`,
-      confidence: confidence, // Confianza general de la lectura
+      confidence: confidence,
       rawText: code,
-      region: { x: 0, y: 0, width: bitmap.width, height: bitmap.height }, // Región global
+      // Simulamos regiones distintas para que el motor visual/clasificador no las borre por solapamiento
+      region: { x: index * 10, y: index * 10, width: 100, height: 100 },
       thumbUrl: dataUrl,
       manualCode: '',
     }));

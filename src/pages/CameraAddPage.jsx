@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { classifyZoneReadings, detectCodeLabelRegions } from '../utils/ocrStickerCodes'
+import { analyzeStickerCodesFromImage } from '../utils/cameraCodeAnalyzer'
 
 function ResultCard({ item, selectable, checked, onToggle, onManualCodeChange }) {
   return (
@@ -69,61 +69,6 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
     input.click()
   }
 
-  const runZoneOCR = async (recognize, bitmap, zone, zoneIndex) => {
-    const attempts = [
-      { rotate: 0, invert: false },
-      { rotate: 0, invert: true },
-      { rotate: 90, invert: false },
-      { rotate: 270, invert: false },
-      { rotate: 180, invert: false },
-    ]
-
-    let best = { confidence: 0, rawText: '' }
-    for (const attempt of attempts) {
-      const workerCanvas = document.createElement('canvas')
-      workerCanvas.width = zone.width * 2
-      workerCanvas.height = zone.height * 2
-      const ctx = workerCanvas.getContext('2d')
-      ctx.drawImage(bitmap, zone.x, zone.y, zone.width, zone.height, 0, 0, workerCanvas.width, workerCanvas.height)
-      if (attempt.invert) {
-        const imageData = ctx.getImageData(0, 0, workerCanvas.width, workerCanvas.height)
-        for (let i = 0; i < imageData.data.length; i += 4) {
-          imageData.data[i] = 255 - imageData.data[i]
-          imageData.data[i + 1] = 255 - imageData.data[i + 1]
-          imageData.data[i + 2] = 255 - imageData.data[i + 2]
-        }
-        ctx.putImageData(imageData, 0, 0)
-      }
-
-      const result = await recognize(workerCanvas, 'eng', {
-        rotateAuto: false,
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-      })
-      const confidence = Number(result?.data?.confidence ?? 0)
-      const rawText = String(result?.data?.text || '')
-      if (confidence > best.confidence) {
-        best = { confidence, rawText }
-      }
-    }
-
-    return {
-      id: `zone-${zoneIndex}`,
-      ...best,
-      region: zone,
-      thumbUrl: workerCanvasToUrl(bitmap, zone),
-      manualCode: '',
-    }
-  }
-
-  const workerCanvasToUrl = (bitmap, zone) => {
-    const c = document.createElement('canvas')
-    c.width = zone.width
-    c.height = zone.height
-    const cx = c.getContext('2d')
-    cx.drawImage(bitmap, zone.x, zone.y, zone.width, zone.height, 0, 0, zone.width, zone.height)
-    return c.toDataURL('image/jpeg', 0.86)
-  }
-
   const handleRunOCR = async () => {
     if (!imageFile) return setReadError('Primero elige una imagen o toma una foto.')
     setIsReading(true)
@@ -135,17 +80,8 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
 
       const bitmap = await createImageBitmap(imageFile)
       setImageMeta({ width: bitmap.width, height: bitmap.height })
-      const regions = detectCodeLabelRegions(bitmap)
+      const { grouped, regions } = await analyzeStickerCodesFromImage(recognize, bitmap, stickers)
       setDebugRegions(debugEnabled ? regions : [])
-
-      const zoneReadings = []
-      for (let i = 0; i < regions.length; i += 1) {
-        // eslint-disable-next-line no-await-in-loop
-        const zoneResult = await runZoneOCR(recognize, bitmap, regions[i], i)
-        zoneReadings.push(zoneResult)
-      }
-
-      const grouped = classifyZoneReadings(zoneReadings, stickers)
       setResults(grouped)
       setSelectedIds(new Set(grouped.good.map((item) => item.id)))
     } catch (error) {

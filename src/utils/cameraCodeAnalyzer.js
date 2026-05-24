@@ -2,11 +2,37 @@ import { classifyZoneReadings, detectCodeLabelRegions } from './ocrStickerCodes'
 
 const DEBUG_OCR = false
 
+const OCR_MIN_WIDTH = 40
+const OCR_MIN_HEIGHT = 18
+const OCR_SCALE = 5
+
 const COMMON_FALLBACK_PREFIXES = [
   'FWC',
-  'MEX', 'RSA', 'KOR', 'CZE', 'CAN', 'BIH', 'QAT', 'SUI', 'HAI', 'SCO',
-  'USA', 'PAR', 'TUR', 'BRA', 'MAR', 'ARG', 'URU', 'COL', 'ESP', 'FRA',
-  'ENG', 'GER', 'POR', 'ITA', 'NED'
+  'MEX',
+  'RSA',
+  'KOR',
+  'CZE',
+  'CAN',
+  'BIH',
+  'QAT',
+  'SUI',
+  'HAI',
+  'SCO',
+  'USA',
+  'PAR',
+  'TUR',
+  'BRA',
+  'MAR',
+  'ARG',
+  'URU',
+  'COL',
+  'ESP',
+  'FRA',
+  'ENG',
+  'GER',
+  'POR',
+  'ITA',
+  'NED',
 ]
 
 function normalizeRaw(value) {
@@ -86,7 +112,7 @@ function buildValidStickerData(stickers) {
       .filter(code => /^[A-Z]{3}\d{1,3}$/.test(code))
   )
 
-  let validPrefixes = Array.from(
+  const detectedPrefixes = Array.from(
     new Set(
       Array.from(validCodes)
         .map(code => code.match(/^([A-Z]{3})\d+$/)?.[1])
@@ -94,15 +120,17 @@ function buildValidStickerData(stickers) {
     )
   )
 
-  // Seguridad extra: si por alguna razón no logró sacar prefijos desde stickers,
-  // usa una lista base para que por lo menos pueda detectar FWC2, MEX1, PAR10, etc.
-  if (!validPrefixes.length) {
-    validPrefixes = COMMON_FALLBACK_PREFIXES
-  }
+  const validPrefixes = Array.from(
+    new Set([
+      ...detectedPrefixes,
+      ...COMMON_FALLBACK_PREFIXES,
+    ])
+  )
 
   return {
     validCodes,
     validPrefixes,
+    hasReliableCatalog: validCodes.size >= 100,
   }
 }
 
@@ -160,7 +188,11 @@ function sanitizeText(text) {
 }
 
 function extractValidCodesFromText(rawText, validStickerData) {
-  const { validCodes, validPrefixes } = validStickerData
+  const {
+    validCodes,
+    validPrefixes,
+    hasReliableCatalog,
+  } = validStickerData
 
   if (!validPrefixes.length) {
     return []
@@ -192,9 +224,7 @@ function extractValidCodesFromText(rawText, validStickerData) {
 
       const code = normalizeStickerCode(`${prefix}${number}`)
 
-      // Si sí tenemos catálogo real, solo acepta códigos existentes.
-      // Si no tenemos catálogo, acepta por prefijo como respaldo.
-      if (!validCodes.size || validCodes.has(code)) {
+      if (!hasReliableCatalog || validCodes.has(code)) {
         extractedCodes.push(code)
       }
     }
@@ -231,9 +261,10 @@ function clampZone(bitmap, zone) {
 function isReadableZone(bitmap, zone) {
   const safeZone = clampZone(bitmap, zone)
 
-  // Evita errores tipo:
-  // Image too small to scale!! (1x36)
-  return safeZone.width >= 24 && safeZone.height >= 12
+  return (
+    safeZone.width >= OCR_MIN_WIDTH &&
+    safeZone.height >= OCR_MIN_HEIGHT
+  )
 }
 
 function relativeZone(parent, rx, ry, rw, rh) {
@@ -263,34 +294,6 @@ function uniqueZones(zones) {
   })
 }
 
-function buildCodeCandidateZones(bitmap, zone) {
-  const safeZone = clampZone(bitmap, zone)
-
-  const candidates = uniqueZones([
-    safeZone,
-
-    // Caso más importante: código arriba derecha como en FWC 2.
-    relativeZone(safeZone, 0.40, 0.00, 0.60, 0.42),
-    relativeZone(safeZone, 0.50, 0.00, 0.48, 0.32),
-    relativeZone(safeZone, 0.56, 0.00, 0.40, 0.24),
-    relativeZone(safeZone, 0.62, 0.00, 0.32, 0.20),
-    relativeZone(safeZone, 0.64, 0.02, 0.30, 0.16),
-
-    // Si la estampa está girada 180 grados.
-    relativeZone(safeZone, 0.00, 0.58, 0.60, 0.42),
-    relativeZone(safeZone, 0.02, 0.70, 0.46, 0.28),
-    relativeZone(safeZone, 0.04, 0.78, 0.40, 0.20),
-
-    // Posibles posiciones en estampas verticales o fotos raras.
-    relativeZone(safeZone, 0.00, 0.00, 0.45, 0.28),
-    relativeZone(safeZone, 0.55, 0.72, 0.45, 0.28),
-    relativeZone(safeZone, 0.25, 0.00, 0.50, 0.24),
-    relativeZone(safeZone, 0.25, 0.76, 0.50, 0.24),
-  ])
-
-  return candidates.filter(candidate => isReadableZone(bitmap, candidate))
-}
-
 function workerCanvasToUrl(bitmap, zone) {
   const safeZone = clampZone(bitmap, zone)
 
@@ -315,7 +318,7 @@ function workerCanvasToUrl(bitmap, zone) {
   return c.toDataURL('image/jpeg', 0.86)
 }
 
-function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = 5) {
+function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = OCR_SCALE, rotate180 = false) {
   const safeZone = clampZone(bitmap, zone)
 
   if (!isReadableZone(bitmap, safeZone)) {
@@ -329,6 +332,11 @@ function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = 5) {
   const ctx = c.getContext('2d')
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
+
+  if (rotate180) {
+    ctx.translate(c.width, c.height)
+    ctx.rotate(Math.PI)
+  }
 
   ctx.drawImage(
     bitmap,
@@ -374,12 +382,10 @@ function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = 5) {
     }
 
     if (mode === 'threshold') {
-      // Para texto gris/oscuro sobre fondo claro.
       value = gray > avgGray ? 255 : 0
     }
 
     if (mode === 'threshold-invert') {
-      // Para texto blanco sobre fondo gris/oscuro.
       value = gray > avgGray ? 0 : 255
     }
 
@@ -393,20 +399,28 @@ function buildOcrCanvas(bitmap, zone, mode = 'contrast', scale = 5) {
   return c
 }
 
-async function runOcrAttempt(recognize, bitmap, zone, mode, pageSegMode) {
+async function runOcrAttempt(recognize, bitmap, zone, options = {}) {
+  const {
+    mode = 'contrast',
+    pageSegMode = 7,
+    rotate180 = false,
+  } = options
+
   if (!isReadableZone(bitmap, zone)) {
     return {
       confidence: 0,
       text: '',
+      imageDataUrl: '',
     }
   }
 
-  const canvas = buildOcrCanvas(bitmap, zone, mode, 5)
+  const canvas = buildOcrCanvas(bitmap, zone, mode, OCR_SCALE, rotate180)
 
-  if (!canvas || canvas.width < 24 || canvas.height < 12) {
+  if (!canvas || canvas.width < OCR_MIN_WIDTH || canvas.height < OCR_MIN_HEIGHT) {
     return {
       confidence: 0,
       text: '',
+      imageDataUrl: '',
     }
   }
 
@@ -414,7 +428,6 @@ async function runOcrAttempt(recognize, bitmap, zone, mode, pageSegMode) {
 
   try {
     const result = await recognize(imageDataUrl, 'eng', {
-      rotateAuto: true,
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
       tessedit_pageseg_mode: String(pageSegMode),
       preserve_interword_spaces: '1',
@@ -436,63 +449,38 @@ async function runOcrAttempt(recognize, bitmap, zone, mode, pageSegMode) {
   }
 }
 
-async function recognizeZone(recognize, bitmap, zone, zoneIndex, validStickerData) {
-  const candidateZones = buildCodeCandidateZones(bitmap, zone)
-  const attempts = []
+function buildCodeCandidateAttempts(bitmap, zone) {
+  const safeZone = clampZone(bitmap, zone)
 
-  for (let i = 0; i < candidateZones.length; i += 1) {
-    const candidateZone = candidateZones[i]
+  const topRightWide = relativeZone(safeZone, 0.45, 0.00, 0.53, 0.30)
+  const topRightTight = relativeZone(safeZone, 0.58, 0.00, 0.38, 0.22)
 
-    // Primer intento: zona grande, texto disperso.
-    if (i === 0) {
-      attempts.push({
-        zone: candidateZone,
-        mode: 'contrast',
-        pageSegMode: 11,
-      })
-
-      attempts.push({
-        zone: candidateZone,
-        mode: 'original',
-        pageSegMode: 11,
-      })
-
-      continue
-    }
-
-    // Recortes pequeños: probar como línea o palabra.
-    attempts.push({
-      zone: candidateZone,
+  const candidates = [
+    {
+      zone: topRightWide,
+      mode: 'contrast',
+      pageSegMode: 7,
+      rotate180: false,
+    },
+    {
+      zone: topRightWide,
       mode: 'original',
       pageSegMode: 7,
-    })
-
-    attempts.push({
-      zone: candidateZone,
-      mode: 'contrast',
-      pageSegMode: 7,
-    })
-
-    attempts.push({
-      zone: candidateZone,
-      mode: 'threshold',
-      pageSegMode: 7,
-    })
-
-    attempts.push({
-      zone: candidateZone,
-      mode: 'threshold-invert',
-      pageSegMode: 7,
-    })
-
-    attempts.push({
-      zone: candidateZone,
+      rotate180: false,
+    },
+    {
+      zone: topRightTight,
       mode: 'contrast',
       pageSegMode: 8,
-    })
-  }
+      rotate180: false,
+    },
+  ]
 
-  let bestInvalidReading = null
+  return candidates.filter(candidate => isReadableZone(bitmap, candidate.zone))
+}
+
+async function recognizeZone(recognize, bitmap, zone, zoneIndex, validStickerData) {
+  const attempts = buildCodeCandidateAttempts(bitmap, zone)
 
   for (let i = 0; i < attempts.length; i += 1) {
     const attempt = attempts[i]
@@ -502,8 +490,11 @@ async function recognizeZone(recognize, bitmap, zone, zoneIndex, validStickerDat
       recognize,
       bitmap,
       attempt.zone,
-      attempt.mode,
-      attempt.pageSegMode
+      {
+        mode: attempt.mode,
+        pageSegMode: attempt.pageSegMode,
+        rotate180: attempt.rotate180,
+      }
     )
 
     if (DEBUG_OCR && result.text) {
@@ -525,80 +516,37 @@ async function recognizeZone(recognize, bitmap, zone, zoneIndex, validStickerDat
         manualCode: '',
       }))
     }
-
-    const normalizedText = normalizeRaw(result.text)
-
-    if (normalizedText) {
-      const invalidReading = {
-        id: `zone-${zoneIndex}-${i}`,
-        confidence: result.confidence,
-        rawText: normalizedText,
-        region: attempt.zone,
-        thumbUrl: workerCanvasToUrl(bitmap, attempt.zone),
-        manualCode: '',
-      }
-
-      if (
-        !bestInvalidReading ||
-        invalidReading.confidence > bestInvalidReading.confidence
-      ) {
-        bestInvalidReading = invalidReading
-      }
-    }
   }
 
-  return bestInvalidReading ? [bestInvalidReading] : []
+  return []
 }
 
 function buildFallbackRegions(bitmap) {
   const { width, height } = bitmap
 
   return uniqueZones([
+    // Bloque superior derecho específico donde suele estar el código.
     {
-      x: 0,
-      y: 0,
-      width,
-      height,
+      x: Math.floor(width * 0.52),
+      y: Math.floor(height * 0.22),
+      width: Math.floor(width * 0.40),
+      height: Math.floor(height * 0.20),
     },
 
-    // Centro de la imagen: normalmente ahí está la estampa completa.
+    // Bloque derecho un poco más amplio.
+    {
+      x: Math.floor(width * 0.45),
+      y: Math.floor(height * 0.20),
+      width: Math.floor(width * 0.48),
+      height: Math.floor(height * 0.30),
+    },
+
+    // Centro: estampa completa aproximada.
     {
       x: Math.floor(width * 0.08),
       y: Math.floor(height * 0.20),
       width: Math.floor(width * 0.84),
       height: Math.floor(height * 0.60),
-    },
-
-    // Zona media-superior.
-    {
-      x: Math.floor(width * 0.12),
-      y: Math.floor(height * 0.22),
-      width: Math.floor(width * 0.78),
-      height: Math.floor(height * 0.42),
-    },
-
-    // Zona derecha donde suele estar el bloque del código.
-    {
-      x: Math.floor(width * 0.40),
-      y: Math.floor(height * 0.18),
-      width: Math.floor(width * 0.55),
-      height: Math.floor(height * 0.42),
-    },
-
-    // Superior derecha más específica.
-    {
-      x: Math.floor(width * 0.50),
-      y: Math.floor(height * 0.22),
-      width: Math.floor(width * 0.42),
-      height: Math.floor(height * 0.24),
-    },
-
-    // Para foto volteada 180 grados.
-    {
-      x: Math.floor(width * 0.05),
-      y: Math.floor(height * 0.55),
-      width: Math.floor(width * 0.55),
-      height: Math.floor(height * 0.35),
     },
   ]).filter(region => isReadableZone(bitmap, region))
 }
@@ -640,23 +588,15 @@ async function recognizeFullImageFallback(recognize, bitmap, validStickerData) {
   const attempts = [
     {
       zone: fullZone,
-      mode: 'original',
-      pageSegMode: 11,
-    },
-    {
-      zone: fullZone,
       mode: 'contrast',
       pageSegMode: 11,
+      rotate180: false,
     },
     {
       zone: fullZone,
-      mode: 'threshold',
+      mode: 'original',
       pageSegMode: 11,
-    },
-    {
-      zone: fullZone,
-      mode: 'threshold-invert',
-      pageSegMode: 11,
+      rotate180: false,
     },
   ]
 
@@ -671,8 +611,11 @@ async function recognizeFullImageFallback(recognize, bitmap, validStickerData) {
       recognize,
       bitmap,
       attempt.zone,
-      attempt.mode,
-      attempt.pageSegMode
+      {
+        mode: attempt.mode,
+        pageSegMode: attempt.pageSegMode,
+        rotate180: attempt.rotate180,
+      }
     )
 
     if (DEBUG_OCR && result.text) {
@@ -701,6 +644,10 @@ async function recognizeFullImageFallback(recognize, bitmap, validStickerData) {
     }
   }
 
+  if (!bestText) {
+    return []
+  }
+
   return [
     {
       id: 'fallback-full',
@@ -719,17 +666,18 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   if (DEBUG_OCR) {
     console.log('OCR validCodes:', Array.from(validStickerData.validCodes))
     console.log('OCR validPrefixes:', validStickerData.validPrefixes)
+    console.log('OCR hasReliableCatalog:', validStickerData.hasReliableCatalog)
   }
 
   const primaryRegions = detectCodeLabelRegions(bitmap) || []
   const fallbackRegions = buildFallbackRegions(bitmap)
 
   const allRegions = uniqueZones([
-    ...primaryRegions,
     ...fallbackRegions,
-  ]).filter(region => isReadableZone(bitmap, region))
-
-  const zoneReadings = []
+    ...primaryRegions,
+  ])
+    .filter(region => isReadableZone(bitmap, region))
+    .slice(0, 4)
 
   for (let i = 0; i < allRegions.length; i += 1) {
     // eslint-disable-next-line no-await-in-loop
@@ -741,28 +689,37 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
       validStickerData
     )
 
-    zoneReadings.push(...zoneResults)
-  }
+    const validDetected = zoneResults.filter(reading =>
+      /^[A-Z]{3}\d{1,3}$/.test(normalizeStickerCode(reading.rawText))
+    )
 
-  const cleanZoneReadings = dedupeReadings(zoneReadings)
-  const grouped = classifyZoneReadings(cleanZoneReadings, stickers)
-  const hasAnyUseful = grouped.good.length || grouped.review.length
+    // Si ya encontró un código, corta inmediatamente.
+    // Esto evita que siga leyendo basura como BEL1, PAN15 o MAR1.
+    if (validDetected.length > 0) {
+      const cleanReadings = dedupeReadings(validDetected)
 
-  if (hasAnyUseful) {
-    return {
-      grouped,
-      regions: primaryRegions,
+      return {
+        grouped: classifyZoneReadings(cleanReadings, stickers),
+        regions: primaryRegions,
+      }
     }
   }
 
+  // Solo usa imagen completa si no encontró nada en las zonas importantes.
   const finalReadings = await recognizeFullImageFallback(
     recognize,
     bitmap,
     validStickerData
   )
 
+  const cleanFinalReadings = dedupeReadings(
+    finalReadings.filter(reading =>
+      /^[A-Z]{3}\d{1,3}$/.test(normalizeStickerCode(reading.rawText))
+    )
+  )
+
   return {
-    grouped: classifyZoneReadings(dedupeReadings(finalReadings), stickers),
+    grouped: classifyZoneReadings(cleanFinalReadings, stickers),
     regions: primaryRegions,
   }
 }

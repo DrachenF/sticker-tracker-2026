@@ -2,19 +2,19 @@ import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_DETECTOR = true
 
-const MAX_VISUAL_CANDIDATES = 34
-const MAX_PRIMARY_OCR = 8
-const MAX_FALLBACK_OCR = 5
+const MAX_VISUAL_CANDIDATES = 30
+const MAX_OCR_TARGETS = 10
 const MAX_DEBUG_RESULTS = 22
 
 const VALID_PREFIXES = [
   'FWC',
-  'MEX', 'RSA', 'KOR', 'CZE', 'CAN', 'BIH', 'QAT', 'SUI', 'BRA', 'MAR', 'HAI',
-  'SCO', 'USA', 'PAR', 'TUR', 'ARG', 'BOL', 'CHI', 'COL', 'ECU', 'PER', 'URU',
-  'VEN', 'AUT', 'BEL', 'CRO', 'DEN', 'ENG', 'ESP', 'FRA', 'GER', 'HUN', 'ITA',
-  'NED', 'POL', 'POR', 'ROU', 'SRB', 'SVK', 'UKR', 'CRC', 'GUA', 'HON', 'JAM',
-  'PAN', 'SLV', 'ALG', 'BFA', 'CMR', 'CIV', 'EGY', 'GHA', 'MLI', 'NGA', 'SEN',
-  'TUN', 'AUS', 'IRN', 'IRQ', 'JPN', 'KSA', 'UAE', 'UZB', 'NZL'
+
+  'ALG', 'ARG', 'AUS', 'AUT', 'BEL', 'BIH', 'BRA', 'CAN',
+  'CPV', 'COL', 'COD', 'CRO', 'CUW', 'CZE', 'ECU', 'EGY',
+  'ENG', 'FRA', 'GER', 'GHA', 'HAI', 'IRN', 'IRQ', 'CIV',
+  'JPN', 'JOR', 'MEX', 'MAR', 'NED', 'NZL', 'NOR', 'PAN',
+  'PAR', 'POR', 'QAT', 'KSA', 'SCO', 'SEN', 'RSA', 'KOR',
+  'ESP', 'SWE', 'SUI', 'TUN', 'TUR', 'URU', 'USA', 'UZB',
 ]
 
 const STOP_WORDS = [
@@ -32,7 +32,9 @@ const STOP_WORDS = [
   'NAMES',
   'EVENTS',
   'DESIGNS',
-  'LOGOS'
+  'LOGOS',
+  'COMPRUEBA',
+  'ALBUM',
 ]
 
 function clampZone(bitmap, zone) {
@@ -105,7 +107,7 @@ function getPixelInfo(data, index) {
     r,
     g,
     b,
-    gray: Math.round((r * 0.299) + (g * 0.587) + (b * 0.114)),
+    gray: Math.round(r * 0.299 + g * 0.587 + b * 0.114),
     chroma: max - min,
   }
 }
@@ -116,9 +118,9 @@ function getComponentAngle(component) {
   const meanX = component.sumX / count
   const meanY = component.sumY / count
 
-  const covXX = (component.sumXX / count) - meanX * meanX
-  const covYY = (component.sumYY / count) - meanY * meanY
-  const covXY = (component.sumXY / count) - meanX * meanY
+  const covXX = component.sumXX / count - meanX * meanX
+  const covYY = component.sumYY / count - meanY * meanY
+  const covXY = component.sumXY / count - meanX * meanY
 
   if (!Number.isFinite(covXX) || !Number.isFinite(covYY) || !Number.isFinite(covXY)) {
     return 0
@@ -203,7 +205,7 @@ function measureZoneStats(bitmap, zone) {
     const max = Math.max(r, g, b)
     const min = Math.min(r, g, b)
     const chroma = max - min
-    const gray = Math.round((r * 0.299) + (g * 0.587) + (b * 0.114))
+    const gray = Math.round(r * 0.299 + g * 0.587 + b * 0.114)
 
     grays.push(gray)
     sumGray += gray
@@ -264,28 +266,28 @@ function scoreCandidate(bitmap, zone, kind, componentMeta = {}) {
   if (ratio >= 1.8 && ratio <= 7.0) score += 42
   if (ratio >= 2.4 && ratio <= 5.8) score += 18
 
-  if (stats.coloredRatio <= 0.10) score += 70
-  else if (stats.coloredRatio <= 0.16) score += 42
-  else if (stats.coloredRatio <= 0.24) score += 12
-  else score -= 170
+  if (stats.coloredRatio <= 0.08) score += 80
+  else if (stats.coloredRatio <= 0.14) score += 50
+  else if (stats.coloredRatio <= 0.22) score += 12
+  else score -= 190
 
-  if (stats.avgChroma <= 48) score += 48
-  else if (stats.avgChroma <= 68) score += 24
-  else if (stats.avgChroma <= 86) score -= 35
-  else score -= 160
+  if (stats.avgChroma <= 44) score += 58
+  else if (stats.avgChroma <= 64) score += 28
+  else if (stats.avgChroma <= 84) score -= 40
+  else score -= 180
 
-  if (stats.stdGray >= 7 && stats.stdGray <= 105) score += 28
-  if (stats.edgeRatio >= 0.010 && stats.edgeRatio <= 0.70) score += 34
-  if (stats.edgeRatio < 0.008) score -= 90
-  if (stats.stdGray < 6) score -= 70
+  if (stats.stdGray >= 7 && stats.stdGray <= 105) score += 30
+  if (stats.edgeRatio >= 0.010 && stats.edgeRatio <= 0.70) score += 36
+  if (stats.edgeRatio < 0.008) score -= 95
+  if (stats.stdGray < 6) score -= 75
 
   if (kind.includes('light')) {
-    if (stats.avgGray >= 120) score += 30
+    if (stats.avgGray >= 120) score += 34
     if (stats.brightRatio >= 0.18) score += 18
   }
 
   if (kind.includes('dark')) {
-    if (stats.avgGray >= 38 && stats.avgGray <= 190) score += 30
+    if (stats.avgGray >= 38 && stats.avgGray <= 190) score += 34
     if (stats.darkRatio >= 0.05 || stats.brightRatio >= 0.05) score += 18
   }
 
@@ -293,9 +295,9 @@ function scoreCandidate(bitmap, zone, kind, componentMeta = {}) {
     score += 20
   }
 
-  if (stats.coloredRatio >= 0.30) score -= 240
-  if (stats.avgChroma >= 105) score -= 240
-  if (ratio < 0.85 || ratio > 13.5) score -= 150
+  if (stats.coloredRatio >= 0.30) score -= 260
+  if (stats.avgChroma >= 105) score -= 260
+  if (ratio < 0.85 || ratio > 13.5) score -= 160
 
   return {
     score: Math.round(score),
@@ -338,25 +340,25 @@ function componentToCandidates(bitmap, component, scale, kind, imageArea) {
 
   const variants = [
     {
-      ...expandZone(bitmap, base, 0.12, 0.25),
+      ...expandZone(bitmap, base, 0.14, 0.28),
       kind: `box-${type}-tight`,
-      score: type === 'light' ? 760 : type === 'dark' ? 740 : 700,
+      score: type === 'light' ? 780 : type === 'dark' ? 760 : 700,
     },
     {
-      ...expandZone(bitmap, base, 0.26, 0.34),
+      ...expandZone(bitmap, base, 0.30, 0.38),
       kind: `box-${type}-medium`,
-      score: type === 'light' ? 720 : type === 'dark' ? 705 : 665,
+      score: type === 'light' ? 735 : type === 'dark' ? 720 : 665,
     },
     {
       ...clampZone(bitmap, {
         ...base,
-        x: base.x - Math.floor(base.width * 0.45),
-        y: base.y - Math.floor(base.height * 0.42),
-        width: base.width + Math.floor(base.width * 1.75),
-        height: base.height + Math.floor(base.height * 0.84),
+        x: base.x - Math.floor(base.width * 0.52),
+        y: base.y - Math.floor(base.height * 0.46),
+        width: base.width + Math.floor(base.width * 1.95),
+        height: base.height + Math.floor(base.height * 0.92),
       }),
       kind: `box-${type}-wide`,
-      score: type === 'light' ? 680 : type === 'dark' ? 675 : 630,
+      score: type === 'light' ? 700 : type === 'dark' ? 690 : 630,
     },
   ]
 
@@ -591,7 +593,7 @@ function addRotatedCopies(candidates) {
       ...candidate,
       kind: `${candidate.kind}-ROT`,
       rotateThumb: true,
-      score: candidate.score + 85,
+      score: candidate.score + 75,
       angle: normalizeAngle(candidate.angle || 0),
     })
   })
@@ -604,58 +606,58 @@ function makeFixedSingleFallbacks(bitmap) {
 
   return [
     {
-      x: Math.floor(width * 0.590),
-      y: Math.floor(height * 0.295),
+      x: Math.floor(width * 0.575),
+      y: Math.floor(height * 0.285),
+      width: Math.floor(width * 0.390),
+      height: Math.floor(height * 0.135),
+      kind: 'fixed-single-fwc-superwide',
+      score: 1920,
+      allowedPrefixes: ['FWC'],
+    },
+    {
+      x: Math.floor(width * 0.595),
+      y: Math.floor(height * 0.300),
       width: Math.floor(width * 0.340),
-      height: Math.floor(height * 0.115),
+      height: Math.floor(height * 0.112),
       kind: 'fixed-single-fwc-wide',
       score: 1900,
       allowedPrefixes: ['FWC'],
     },
     {
       x: Math.floor(width * 0.625),
-      y: Math.floor(height * 0.307),
+      y: Math.floor(height * 0.310),
       width: Math.floor(width * 0.285),
-      height: Math.floor(height * 0.090),
+      height: Math.floor(height * 0.088),
       kind: 'fixed-single-fwc-tight',
-      score: 1860,
+      score: 1840,
       allowedPrefixes: ['FWC'],
-    },
-    {
-      x: Math.floor(width * 0.540),
-      y: Math.floor(height * 0.280),
-      width: Math.floor(width * 0.420),
-      height: Math.floor(height * 0.145),
-      kind: 'fixed-single-fwc-superwide',
-      score: 1820,
-      allowedPrefixes: ['FWC'],
-    },
-    {
-      x: Math.floor(width * 0.585),
-      y: Math.floor(height * 0.145),
-      width: Math.floor(width * 0.330),
-      height: Math.floor(height * 0.095),
-      kind: 'fixed-single-arg-wide',
-      score: 1900,
-      allowedPrefixes: ['ARG'],
-    },
-    {
-      x: Math.floor(width * 0.620),
-      y: Math.floor(height * 0.155),
-      width: Math.floor(width * 0.280),
-      height: Math.floor(height * 0.078),
-      kind: 'fixed-single-arg-tight',
-      score: 1860,
-      allowedPrefixes: ['ARG'],
     },
     {
       x: Math.floor(width * 0.545),
-      y: Math.floor(height * 0.132),
-      width: Math.floor(width * 0.400),
-      height: Math.floor(height * 0.120),
+      y: Math.floor(height * 0.128),
+      width: Math.floor(width * 0.420),
+      height: Math.floor(height * 0.130),
       kind: 'fixed-single-arg-superwide',
-      score: 1820,
-      allowedPrefixes: ['ARG'],
+      score: 1920,
+      allowedPrefixes: VALID_PREFIXES.filter(prefix => prefix !== 'FWC'),
+    },
+    {
+      x: Math.floor(width * 0.580),
+      y: Math.floor(height * 0.142),
+      width: Math.floor(width * 0.350),
+      height: Math.floor(height * 0.100),
+      kind: 'fixed-single-arg-wide',
+      score: 1900,
+      allowedPrefixes: VALID_PREFIXES.filter(prefix => prefix !== 'FWC'),
+    },
+    {
+      x: Math.floor(width * 0.620),
+      y: Math.floor(height * 0.153),
+      width: Math.floor(width * 0.285),
+      height: Math.floor(height * 0.080),
+      kind: 'fixed-single-arg-tight',
+      score: 1840,
+      allowedPrefixes: VALID_PREFIXES.filter(prefix => prefix !== 'FWC'),
     },
   ]
     .map(zone => {
@@ -663,7 +665,7 @@ function makeFixedSingleFallbacks(bitmap) {
       const visual = scoreCandidate(
         bitmap,
         safe,
-        zone.kind.includes('arg') ? 'fixed-dark' : 'fixed-light'
+        zone.kind.includes('fwc') ? 'fixed-light' : 'fixed-dark'
       )
 
       return {
@@ -694,8 +696,8 @@ function filterVisualCandidate(candidate) {
   const edgeRatio = Number(stats.edgeRatio || 0)
   const stdGray = Number(stats.stdGray || 0)
 
-  if (coloredRatio >= 0.26) return false
-  if (avgChroma >= 96) return false
+  if (coloredRatio >= 0.24) return false
+  if (avgChroma >= 90) return false
   if (edgeRatio < 0.006) return false
   if (stdGray < 5) return false
   if (ratio < 0.85 || ratio > 13.5) return false
@@ -828,14 +830,10 @@ function preprocessCanvasForOcr(canvas, mode = 'normal') {
     const g = data[i + 1]
     const b = data[i + 2]
 
-    let gray = Math.round((r * 0.299) + (g * 0.587) + (b * 0.114))
+    let gray = Math.round(r * 0.299 + g * 0.587 + b * 0.114)
 
     if (mode === 'contrast') {
-      gray = Math.round((gray - 128) * 1.85 + 128)
-    }
-
-    if (mode === 'binary') {
-      gray = gray >= 142 ? 255 : 0
+      gray = Math.round((gray - 128) * 1.9 + 128)
     }
 
     gray = Math.max(0, Math.min(255, gray))
@@ -876,7 +874,6 @@ function repairNumber(raw) {
 
 function isValidNumber(number) {
   const value = Number(number)
-
   return Number.isFinite(value) && value >= 1 && value <= 20
 }
 
@@ -894,13 +891,8 @@ function getAllowedPrefixes(candidate) {
     return candidate.allowedPrefixes
   }
 
-  if (kind.includes('fixed-single-fwc')) return ['FWC']
-  if (kind.includes('fixed-single-arg')) return ['ARG']
   if (kind.includes('box-light')) return ['FWC']
-
-  if (kind.includes('box-dark')) {
-    return VALID_PREFIXES.filter(prefix => prefix !== 'FWC')
-  }
+  if (kind.includes('fixed-single-fwc')) return ['FWC']
 
   return VALID_PREFIXES
 }
@@ -944,12 +936,16 @@ function extractControlledFuzzyCodes(cleanText, candidate) {
   const stopWordCount = countStopWords(cleanText)
   const found = []
 
-  const canUseLooseNumber = stopWordCount <= 1 || candidate.forced
+  const kind = String(candidate.kind || '').toLowerCase()
+  const canUseFuzzy = candidate.forced || kind.includes('box-light') || kind.includes('box-dark')
+
+  if (!canUseFuzzy) return found
+  if (stopWordCount >= 2 && !candidate.forced) return found
 
   if (allowedPrefixes.includes('FWC')) {
     const fwcRegexes = [
-      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV|WC)([0-9OQDILZS]{1,2})/,
-      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV)\s+([0-9OQDILZS]{1,2})/,
+      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV|FW|WC)([0-9OQDILZS]{1,2})/,
+      /(?:FWC|FWG|FVC|FIC|FVG|FNC|FVV|FW|WC)\s+([0-9OQDILZS]{1,2})/,
     ]
 
     fwcRegexes.forEach(regex => {
@@ -958,12 +954,6 @@ function extractControlledFuzzyCodes(cleanText, candidate) {
 
       if (isValidNumber(number)) found.push(`FWC${number}`)
     })
-
-    if (canUseLooseNumber) {
-      const tokenNumber = extractLooseTokenNumber(cleanText)
-
-      if (isValidNumber(tokenNumber)) found.push(`FWC${tokenNumber}`)
-    }
   }
 
   if (allowedPrefixes.includes('ARG')) {
@@ -978,12 +968,6 @@ function extractControlledFuzzyCodes(cleanText, candidate) {
 
       if (isValidNumber(number)) found.push(`ARG${number}`)
     })
-
-    if (candidate.forced && canUseLooseNumber) {
-      const tokenNumber = extractLooseTokenNumber(cleanText)
-
-      if (isValidNumber(tokenNumber)) found.push(`ARG${tokenNumber}`)
-    }
   }
 
   if (allowedPrefixes.includes('PAR')) {
@@ -1001,32 +985,6 @@ function extractControlledFuzzyCodes(cleanText, candidate) {
   }
 
   return found
-}
-
-function extractLooseTokenNumber(cleanText) {
-  const tokens = cleanText.split(/\s+/).filter(Boolean)
-
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i]
-
-    const joinedMatch = token.match(/^[A-Z]{2,4}([0-9OQDILZS]{1,2})$/)
-    if (joinedMatch) {
-      const number = repairNumber(joinedMatch[1])
-      if (isValidNumber(number)) return number
-    }
-
-    const numberOnly = token.match(/^[0-9OQDILZS]{1,2}$/)
-    if (numberOnly) {
-      const previous = tokens[i - 1] || ''
-      const number = repairNumber(token)
-
-      if (isValidNumber(number) && /^[A-Z]{2,4}$/.test(previous)) {
-        return number
-      }
-    }
-  }
-
-  return ''
 }
 
 function extractCodesFromText(text, candidate) {
@@ -1065,7 +1023,7 @@ async function recognizeCandidate(recognize, bitmap, candidate, index) {
       const result = await recognize(imageDataUrl, 'eng', {
         rotateAuto: false,
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
-        tessedit_pageseg_mode: '7',
+        tessedit_pageseg_mode: '8',
       })
 
       const rawText = String(result?.data?.text || '')
@@ -1138,20 +1096,31 @@ function buildReading(bitmap, candidate, index, detection) {
   }
 }
 
+function isLikelySingleImage(visualCandidates) {
+  return visualCandidates.length <= 16
+}
+
 function pickOcrTargets(visualCandidates, fixedCandidates) {
-  const primary = visualCandidates.slice(0, MAX_PRIMARY_OCR)
+  const likelySingle = isLikelySingleImage(visualCandidates)
+
+  if (likelySingle) {
+    return uniqueZones([
+      ...fixedCandidates,
+      ...visualCandidates.slice(0, 4),
+    ]).slice(0, MAX_OCR_TARGETS)
+  }
 
   return uniqueZones([
-    ...primary,
-    ...fixedCandidates.slice(0, MAX_FALLBACK_OCR),
-  ]).slice(0, MAX_PRIMARY_OCR + MAX_FALLBACK_OCR)
+    ...visualCandidates.slice(0, 8),
+    ...fixedCandidates.slice(0, 2),
+  ]).slice(0, MAX_OCR_TARGETS)
 }
 
 export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) {
   const visualCandidates = detectVisualCandidates(bitmap)
   const fixedCandidates = makeFixedSingleFallbacks(bitmap)
-
   const ocrTargets = pickOcrTargets(visualCandidates, fixedCandidates)
+
   const enriched = []
 
   for (let i = 0; i < ocrTargets.length; i += 1) {
@@ -1198,13 +1167,15 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   const finalCandidates = sorted.slice(0, MAX_DEBUG_RESULTS)
 
   const detection = {
-    mode: 'DEBUG',
+    mode: isLikelySingleImage(visualCandidates) ? 'SINGLE' : 'MULTI',
     visualCount: visualCandidates.length,
+    fixedCount: fixedCandidates.length,
     ocrCount: ocrTargets.length,
   }
 
   if (DEBUG_DETECTOR) {
-    console.log('DEBUG STRICT PREFIX OCR DETECTOR:', {
+    console.log('DEBUG OFFICIAL PREFIX OCR DETECTOR:', {
+      prefixes: VALID_PREFIXES,
       visualCount: visualCandidates.length,
       fixedCount: fixedCandidates.length,
       ocrCount: ocrTargets.length,

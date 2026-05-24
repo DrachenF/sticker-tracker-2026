@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { analyzeStickerCodesFromImage } from '../utils/cameraCodeAnalyzer'
+import { analyzeStickerCodesFromImage, normalizeImageFileToBitmap } from '../utils/cameraCodeAnalyzer'
 
 function ResultCard({ item, selectable, checked, onToggle, onManualCodeChange }) {
   return (
@@ -78,7 +78,7 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
       const recognize = tesseractModule.recognize || tesseractModule.default?.recognize
       if (!recognize) throw new Error('No se pudo inicializar OCR.')
 
-      const bitmap = await createImageBitmap(imageFile)
+      const bitmap = await normalizeImageFileToBitmap(imageFile)
       setImageMeta({ width: bitmap.width, height: bitmap.height })
       const { grouped, regions } = await analyzeStickerCodesFromImage(recognize, bitmap, stickers)
       setDebugRegions(debugEnabled ? regions : [])

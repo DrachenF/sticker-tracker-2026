@@ -59,10 +59,10 @@ export function detectCodeLabelRegions(imageBitmap) {
 
     // El codigo real suele verse como capsula clara sobre fondo gris:
     // contraste medio-alto, mezcla de claros y oscuros, y no excesivo ruido.
-    if (contrast < 52) return null
-    if (brightRatio < 0.18 || brightRatio > 0.82) return null
-    if (darkRatio < 0.08 || darkRatio > 0.66) return null
-    if (transitionRatio < 0.03 || transitionRatio > 0.24) return null
+    if (contrast < 44) return null
+    if (brightRatio < 0.14 || brightRatio > 0.88) return null
+    if (darkRatio < 0.06 || darkRatio > 0.74) return null
+    if (transitionRatio < 0.018 || transitionRatio > 0.32) return null
     if (meanLum < 92 || meanLum > 205) return null
 
     const score = (contrast * 1.25) + (brightRatio * 65) + (darkRatio * 45) - (transitionRatio * 140)
@@ -101,7 +101,36 @@ export function detectCodeLabelRegions(imageBitmap) {
     }
   }
 
-  return regions.sort((a, b) => b.score - a.score).slice(0, 20)
+  const prioritized = regions.sort((a, b) => b.score - a.score).slice(0, 20)
+  if (prioritized.length >= 4) {
+    return prioritized
+  }
+
+  // Fallback: si la heuristica estricta encuentra pocas zonas (ej. una sola
+  // estampa con bajo contraste o mucho ruido), usar un barrido mas amplio.
+  const fallback = []
+  const samplesX = 9
+  const samplesY = 11
+  for (let gy = 0; gy < samplesY; gy += 1) {
+    for (let gx = 0; gx < samplesX; gx += 1) {
+      const cellX = Math.floor((gx / samplesX) * width)
+      const cellY = Math.floor((gy / samplesY) * height)
+      const w = Math.floor(width * 0.19)
+      const h = Math.floor(height * 0.085)
+      const x = clamp(cellX, 0, Math.max(0, width - w))
+      const y = clamp(cellY, 0, Math.max(0, height - h))
+      if (w < 34 || h < 10) continue
+      const ratio = w / h
+      if (ratio < 2 || ratio > 8.8) continue
+      const analysis = evaluateZone(x, y, w, h)
+      if (!analysis) continue
+      fallback.push({ x, y, width: w, height: h, contrast: analysis.contrast, score: analysis.score })
+    }
+  }
+
+  return [...prioritized, ...fallback]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 28)
 }
 
 function overlaps(a, b) {

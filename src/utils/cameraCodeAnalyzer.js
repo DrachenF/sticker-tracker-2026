@@ -1,3 +1,5 @@
+import { classifyZoneReadings } from './ocrStickerCodes'
+
 const DEBUG_DETECTOR = true
 
 const MAX_DEBUG_CANDIDATES = 60
@@ -151,7 +153,6 @@ function getPixelInfo(data, index) {
 
 function createMaskClassifier(kind) {
   if (kind === 'light-box') {
-    // Cajitas claras: FWC2, FWC3, FWC6.
     return ({ gray, chroma }) => (
       gray >= 115 &&
       gray <= 255 &&
@@ -160,7 +161,6 @@ function createMaskClassifier(kind) {
   }
 
   if (kind === 'dark-box') {
-    // Cajitas grises/oscuras: ARG17, PAR1.
     return ({ gray, chroma }) => (
       gray >= 25 &&
       gray <= 185 &&
@@ -169,7 +169,6 @@ function createMaskClassifier(kind) {
   }
 
   if (kind === 'sticker-body') {
-    // Cuerpo de la estampa para sacar esquina superior derecha.
     return ({ gray, chroma }) => (
       gray >= 85 &&
       gray <= 255 &&
@@ -268,7 +267,6 @@ function componentToStickerBodyCodeCandidates(bitmap, component, scale, imageAre
 
   const candidates = []
 
-  // Esquina superior derecha amplia.
   candidates.push({
     ...expandZone(bitmap, {
       x: Math.floor(sticker.x + sticker.width * 0.52),
@@ -299,7 +297,6 @@ function componentToStickerBodyCodeCandidates(bitmap, component, scale, imageAre
     },
   })
 
-  // Esquina superior derecha más ajustada.
   candidates.push({
     ...expandZone(bitmap, {
       x: Math.floor(sticker.x + sticker.width * 0.60),
@@ -452,7 +449,6 @@ function addBackupRegions(bitmap) {
   const { width, height } = bitmap
 
   return [
-    // FWC2 foto horizontal: cajita blanca arriba derecha.
     {
       x: Math.floor(width * 0.615),
       y: Math.floor(height * 0.315),
@@ -469,8 +465,6 @@ function addBackupRegions(bitmap) {
       kind: 'backup-fwc-wide',
       score: 285,
     },
-
-    // ARG17 foto vertical: etiqueta gris arriba derecha.
     {
       x: Math.floor(width * 0.590),
       y: Math.floor(height * 0.125),
@@ -487,8 +481,6 @@ function addBackupRegions(bitmap) {
       kind: 'backup-arg-wide',
       score: 285,
     },
-
-    // Superior derecha general.
     {
       x: Math.floor(width * 0.500),
       y: Math.floor(height * 0.070),
@@ -497,8 +489,6 @@ function addBackupRegions(bitmap) {
       kind: 'backup-top-right',
       score: 210,
     },
-
-    // Centro superior amplio, por si el sticker está horizontal y alto.
     {
       x: Math.floor(width * 0.420),
       y: Math.floor(height * 0.220),
@@ -537,36 +527,29 @@ function buildDebugReading(bitmap, candidate, index) {
   const meta = candidate.meta || {}
 
   const label = [
-    `${index + 1}`,
+    `DBG${index + 1}`,
     candidate.kind || 'unknown',
-    `score:${Math.round(candidate.score || 0)}`,
-    `x:${safe.x}`,
-    `y:${safe.y}`,
-    `w:${safe.width}`,
-    `h:${safe.height}`,
-    meta.ratio ? `r:${meta.ratio}` : '',
-    meta.fillRatio ? `fill:${meta.fillRatio}` : '',
+    `score${Math.round(candidate.score || 0)}`,
+    `x${safe.x}`,
+    `y${safe.y}`,
+    `w${safe.width}`,
+    `h${safe.height}`,
+    meta.ratio ? `r${meta.ratio}` : '',
+    meta.fillRatio ? `fill${meta.fillRatio}` : '',
   ]
     .filter(Boolean)
-    .join(' | ')
+    .join(' ')
 
   return {
     id: `debug-candidate-${index}`,
     confidence: Math.round(candidate.score || 0),
+
+    // Importante: rawText simple para que classifyZoneReadings no rompa la UI.
     rawText: label,
-    normalizedText: label,
-    manualCode: '',
+
     region: safe,
     thumbUrl: workerCanvasToUrl(bitmap, safe),
-
-    // Campos defensivos para no romper el render
-    code: '',
-    matches: [],
-    candidates: [],
-    possibleMatches: [],
-    bestMatch: null,
-    reason: 'Debug detector candidate',
-    status: 'debug',
+    manualCode: '',
   }
 }
 
@@ -581,12 +564,10 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
     buildDebugReading(bitmap, candidate, index)
   )
 
+  const grouped = classifyZoneReadings(debugReadings, stickers)
+
   return {
-    grouped: {
-      good: [],
-      review: [],
-      bad: debugReadings,
-    },
+    grouped,
     regions: candidates.map(candidate => ({
       x: candidate.x,
       y: candidate.y,

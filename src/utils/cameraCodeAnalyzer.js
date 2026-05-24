@@ -1186,7 +1186,8 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
 
   const readings = finalCandidates.map((candidate, index) =>
     buildReading(bitmap, candidate, index, detection)
-  )
+  
+                                      )
 
   const grouped = classifyZoneReadings(readings, stickers)
 

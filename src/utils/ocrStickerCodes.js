@@ -25,39 +25,112 @@ export function detectCodeLabelRegions(imageBitmap) {
   ctx.drawImage(imageBitmap, 0, 0)
 
   const regions = []
-  const samplesX = 8
-  const samplesY = 10
+  const stickerSamplesX = 7
+  const stickerSamplesY = 7
+  const stickerScale = [0.2, 0.27, 0.34]
 
+  const evaluateZone = (x, y, w, h) => {
+    const imgData = ctx.getImageData(x, y, w, h).data
+    let minLum = 255
+    let maxLum = 0
+    let sumLum = 0
+    let brightCount = 0
+    let darkCount = 0
+    let transitions = 0
+    let prevLum = -1
+
+    for (let i = 0; i < imgData.length; i += 4) {
+      const lum = (imgData[i] * 0.299) + (imgData[i + 1] * 0.587) + (imgData[i + 2] * 0.114)
+      minLum = Math.min(minLum, lum)
+      maxLum = Math.max(maxLum, lum)
+      sumLum += lum
+      if (lum > 188) brightCount += 1
+      if (lum < 118) darkCount += 1
+      if (prevLum >= 0 && Math.abs(lum - prevLum) > 42) transitions += 1
+      prevLum = lum
+    }
+
+    const totalPixels = w * h
+    const contrast = maxLum - minLum
+    const brightRatio = brightCount / totalPixels
+    const darkRatio = darkCount / totalPixels
+    const transitionRatio = transitions / totalPixels
+    const meanLum = sumLum / totalPixels
+
+    // El codigo real suele verse como capsula clara sobre fondo gris:
+    // contraste medio-alto, mezcla de claros y oscuros, y no excesivo ruido.
+    if (contrast < 44) return null
+    if (brightRatio < 0.14 || brightRatio > 0.88) return null
+    if (darkRatio < 0.06 || darkRatio > 0.74) return null
+    if (transitionRatio < 0.018 || transitionRatio > 0.32) return null
+    if (meanLum < 92 || meanLum > 205) return null
+
+    const score = (contrast * 1.25) + (brightRatio * 65) + (darkRatio * 45) - (transitionRatio * 140)
+    return { contrast, score }
+  }
+
+  for (let gy = 0; gy < stickerSamplesY; gy += 1) {
+    for (let gx = 0; gx < stickerSamplesX; gx += 1) {
+      for (const scale of stickerScale) {
+        const stickerW = Math.floor(width * scale)
+        const stickerH = Math.floor(stickerW * 0.68)
+        if (stickerW < 120 || stickerH < 70) continue
+
+        const anchorX = Math.floor((gx / stickerSamplesX) * width)
+        const anchorY = Math.floor((gy / stickerSamplesY) * height)
+        const stickerX = clamp(anchorX - Math.floor(stickerW * 0.55), 0, Math.max(0, width - stickerW))
+        const stickerY = clamp(anchorY - Math.floor(stickerH * 0.5), 0, Math.max(0, height - stickerH))
+
+        const zoneW = Math.floor(stickerW * 0.38)
+        const zoneH = Math.floor(stickerH * 0.22)
+        const zoneX = clamp(stickerX + Math.floor(stickerW * 0.58), 0, Math.max(0, width - zoneW))
+        const zoneY = clamp(stickerY + Math.floor(stickerH * 0.03), 0, Math.max(0, height - zoneH))
+
+        const analysis = evaluateZone(zoneX, zoneY, zoneW, zoneH)
+        if (!analysis) continue
+
+        regions.push({
+          x: zoneX,
+          y: zoneY,
+          width: zoneW,
+          height: zoneH,
+          contrast: analysis.contrast,
+          score: analysis.score,
+        })
+      }
+    }
+  }
+
+  const prioritized = regions.sort((a, b) => b.score - a.score).slice(0, 20)
+  if (prioritized.length >= 4) {
+    return prioritized
+  }
+
+  // Fallback: si la heuristica estricta encuentra pocas zonas (ej. una sola
+  // estampa con bajo contraste o mucho ruido), usar un barrido mas amplio.
+  const fallback = []
+  const samplesX = 9
+  const samplesY = 11
   for (let gy = 0; gy < samplesY; gy += 1) {
     for (let gx = 0; gx < samplesX; gx += 1) {
       const cellX = Math.floor((gx / samplesX) * width)
       const cellY = Math.floor((gy / samplesY) * height)
-      const w = Math.floor(width * 0.2)
-      const h = Math.floor(height * 0.075)
+      const w = Math.floor(width * 0.19)
+      const h = Math.floor(height * 0.085)
       const x = clamp(cellX, 0, Math.max(0, width - w))
       const y = clamp(cellY, 0, Math.max(0, height - h))
-
       if (w < 34 || h < 10) continue
-      if (w > width * 0.38 || h > height * 0.15) continue
       const ratio = w / h
-      if (ratio < 2 || ratio > 9) continue
-
-      const imgData = ctx.getImageData(x, y, w, h).data
-      let minLum = 255
-      let maxLum = 0
-      for (let i = 0; i < imgData.length; i += 4) {
-        const lum = (imgData[i] * 0.299) + (imgData[i + 1] * 0.587) + (imgData[i + 2] * 0.114)
-        minLum = Math.min(minLum, lum)
-        maxLum = Math.max(maxLum, lum)
-      }
-      const contrast = maxLum - minLum
-      if (contrast < 48) continue
-
-      regions.push({ x, y, width: w, height: h, contrast })
+      if (ratio < 2 || ratio > 8.8) continue
+      const analysis = evaluateZone(x, y, w, h)
+      if (!analysis) continue
+      fallback.push({ x, y, width: w, height: h, contrast: analysis.contrast, score: analysis.score })
     }
   }
 
-  return regions.sort((a, b) => b.contrast - a.contrast).slice(0, 40)
+  return [...prioritized, ...fallback]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 28)
 }
 
 function overlaps(a, b) {
@@ -86,6 +159,7 @@ export function dedupeByZoneAndCode(entries) {
 
 export function classifyZoneReadings(zoneReadings, stickers) {
   const validCodeSet = buildValidCodeSet(stickers)
+  const prefixSet = new Set(stickers.map((item) => String(item.code || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3)).filter((item) => item.length === 3))
   const good = []
   const review = []
   const invalid = []
@@ -110,7 +184,13 @@ export function classifyZoneReadings(zoneReadings, stickers) {
       return
     }
 
-    review.push({ ...zoneItem, code, reason: 'Código no exacto', status: 'Revisar' })
+    const prefix = code.slice(0, 3)
+    if (prefixSet.has(prefix) && zoneItem.confidence >= 56) {
+      review.push({ ...zoneItem, code, reason: 'Coincidencia parcial', status: 'Revisar' })
+      return
+    }
+
+    invalid.push({ ...zoneItem, code, reason: 'Código inválido' })
   })
 
   return {

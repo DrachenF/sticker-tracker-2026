@@ -35,6 +35,8 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [debugRegions, setDebugRegions] = useState([])
   const [imageMeta, setImageMeta] = useState({ width: 1, height: 1 })
+  const debugEnabled = useMemo(() => new URLSearchParams(window.location.search).get('cameraDebug') === '1', [])
+  const validCodeSet = useMemo(() => new Set(stickers.map((item) => String(item.code || '').toUpperCase())), [stickers])
 
   const previewUrl = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : ''), [imageFile])
 
@@ -48,6 +50,23 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
     setDebugRegions([])
     setImageMeta({ width: 1, height: 1 })
     setReadError('')
+  }
+
+  const openCameraCapture = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.capture = 'environment'
+    input.onchange = handleFileChange
+    input.click()
+  }
+
+  const openImagePicker = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = handleFileChange
+    input.click()
   }
 
   const runZoneOCR = async (recognize, bitmap, zone, zoneIndex) => {
@@ -117,7 +136,7 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
       const bitmap = await createImageBitmap(imageFile)
       setImageMeta({ width: bitmap.width, height: bitmap.height })
       const regions = detectCodeLabelRegions(bitmap)
-      setDebugRegions(regions)
+      setDebugRegions(debugEnabled ? regions : [])
 
       const zoneReadings = []
       for (let i = 0; i < regions.length; i += 1) {
@@ -149,7 +168,11 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
 
   const handleSaveSelected = () => {
     const all = [...results.good, ...results.review]
-    const picked = all.filter((item) => selectedIds.has(item.id)).map((item) => item.manualCode || item.code).filter(Boolean)
+    const picked = all
+      .filter((item) => selectedIds.has(item.id))
+      .map((item) => (item.manualCode || item.code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''))
+      .filter(Boolean)
+      .filter((code) => validCodeSet.has(code))
     if (!picked.length) return
     if (!window.confirm(`Se guardarán ${picked.length} códigos. Revisa antes de confirmar.`)) return
     picked.forEach((code) => onApplyDetectedSticker(code))
@@ -175,7 +198,13 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
         <p className="camera-warning">Esta función está en prueba. Revisa los códigos antes de guardar.</p>
         <p className="camera-empty">Para mejores resultados, coloca las estampitas con el código visible, buena luz y evita que una tape el código de otra.</p>
       </header>
-      <label className="camera-input-card"><span>Tomar foto o subir imagen</span><input type="file" accept="image/*" capture="environment" onChange={handleFileChange} /></label>
+      <div className="camera-input-card">
+        <span>Tomar foto o subir imagen</span>
+        <div className="camera-actions">
+          <button type="button" onClick={openCameraCapture}>Abrir cámara</button>
+          <button type="button" onClick={openImagePicker}>Subir imagen</button>
+        </div>
+      </div>
       {previewUrl ? (
         <div className="camera-preview-wrap">
           <img className="camera-preview" src={previewUrl} alt="Vista previa" />

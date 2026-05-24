@@ -777,7 +777,7 @@ function App() {
     setToast({
       text: `Quitaste ${sticker.code} de tus faltantes`,
       actionLabel: 'Revertir',
-      onAction: handleRevertLastMissingAction,
+      onAction: handleRevertMissingQuickAction,
     })
   }
 
@@ -802,7 +802,7 @@ function App() {
     setToast({
       text: `Quitaste ${sticker.code} de tus repetidas`,
       actionLabel: 'Revertir',
-      onAction: handleRevertLastDuplicateAction,
+      onAction: handleRevertDuplicateQuickAction,
     })
   }
 
@@ -1050,33 +1050,18 @@ function App() {
   }
 
 
-  const handleRevertLastMissingAction = () => {
+  const handleRevertMissingQuickAction = () => {
     if (!lastMissingAction) return
     setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastMissingAction.code, lastMissingAction.previousState))
     setLastMissingAction(null)
     setToast({ text: 'Se revirtió el último cambio en faltantes.' })
   }
 
-  const handleRevertLastDuplicateAction = () => {
+  const handleRevertDuplicateQuickAction = () => {
     if (!lastDuplicateAction) return
     setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastDuplicateAction.code, lastDuplicateAction.previousState))
     setLastDuplicateAction(null)
     setToast({ text: 'Se revirtió el último cambio en repetidas.' })
-  }
-
-
-  const handleRevertLastMissingAction = () => {
-    if (!lastMissingAction) return
-    setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastMissingAction.code, lastMissingAction.previousState))
-    setLastMissingAction(null)
-    setToast('Se revirtió el último cambio en faltantes.')
-  }
-
-  const handleRevertLastDuplicateAction = () => {
-    if (!lastDuplicateAction) return
-    setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastDuplicateAction.code, lastDuplicateAction.previousState))
-    setLastDuplicateAction(null)
-    setToast('Se revirtió el último cambio en repetidas.')
   }
 
   const pageProps = {
@@ -1105,8 +1090,8 @@ function App() {
     onShareWhatsApp: handleShareWhatsApp,
     onNavigate: handleTabChange,
     onPageTurnSound: () => playAppSound('page'),
-    onRevertLastMissingAction: handleRevertLastMissingAction,
-    onRevertLastDuplicateAction: handleRevertLastDuplicateAction,
+    onRevertLastMissingAction: handleRevertMissingQuickAction,
+    onRevertLastDuplicateAction: handleRevertDuplicateQuickAction,
     canRevertMissingAction: Boolean(lastMissingAction),
     canRevertDuplicateAction: Boolean(lastDuplicateAction),
   }

@@ -2,7 +2,7 @@ import { classifyZoneReadings } from './ocrStickerCodes'
 
 const DEBUG_DETECTOR = true
 
-const MAX_DEBUG_CANDIDATES = 14
+const MAX_DEBUG_CANDIDATES = 18
 
 function clampZone(bitmap, zone) {
   const rawX = Math.floor(zone?.x || 0)
@@ -34,7 +34,7 @@ function isReadableZone(bitmap, zone) {
   return safe.width >= 20 && safe.height >= 8
 }
 
-function expandZone(bitmap, zone, amountX = 0.06, amountY = 0.10) {
+function expandZone(bitmap, zone, amountX = 0.08, amountY = 0.12) {
   const safe = clampZone(bitmap, zone)
 
   const extraX = Math.floor(safe.width * amountX)
@@ -45,6 +45,23 @@ function expandZone(bitmap, zone, amountX = 0.06, amountY = 0.10) {
     y: safe.y - extraY,
     width: safe.width + extraX * 2,
     height: safe.height + extraY * 2,
+  })
+}
+
+function expandLabelWide(bitmap, zone, kind) {
+  const safe = clampZone(bitmap, zone)
+
+  const leftExtra = Math.floor(safe.width * 0.28)
+  const rightExtra = Math.floor(safe.width * 1.45)
+  const topExtra = Math.floor(safe.height * 0.35)
+  const bottomExtra = Math.floor(safe.height * 0.35)
+
+  return clampZone(bitmap, {
+    x: safe.x - leftExtra,
+    y: safe.y - topExtra,
+    width: safe.width + leftExtra + rightExtra,
+    height: safe.height + topExtra + bottomExtra,
+    kind,
   })
 }
 
@@ -103,7 +120,7 @@ function regionIoU(a, b) {
   return intersection / union
 }
 
-function removeOverlappingRegions(regions, maxOverlap = 0.45) {
+function removeOverlappingRegions(regions, maxOverlap = 0.48) {
   const sorted = [...regions].sort((a, b) => b.score - a.score)
   const kept = []
 
@@ -125,7 +142,7 @@ function zoneCenter(zone) {
   }
 }
 
-function isInside(zone, container, paddingRatio = 0.04) {
+function isInside(zone, container, paddingRatio = 0.08) {
   const c = zoneCenter(zone)
   const padX = container.width * paddingRatio
   const padY = container.height * paddingRatio
@@ -141,16 +158,11 @@ function isInside(zone, container, paddingRatio = 0.04) {
 function isTopRightOfBody(zone, body) {
   const c = zoneCenter(zone)
 
-  const minX = body.x + body.width * 0.42
-  const maxX = body.x + body.width * 1.04
-  const minY = body.y - body.height * 0.04
-  const maxY = body.y + body.height * 0.38
-
   return (
-    c.x >= minX &&
-    c.x <= maxX &&
-    c.y >= minY &&
-    c.y <= maxY
+    c.x >= body.x + body.width * 0.38 &&
+    c.x <= body.x + body.width * 1.05 &&
+    c.y >= body.y - body.height * 0.05 &&
+    c.y <= body.y + body.height * 0.42
   )
 }
 
@@ -198,25 +210,25 @@ function getPixelInfo(data, index) {
 function createMaskClassifier(kind) {
   if (kind === 'sticker-body') {
     return ({ gray, chroma }) => (
-      gray >= 92 &&
-      gray <= 246 &&
-      chroma <= 92
+      gray >= 90 &&
+      gray <= 248 &&
+      chroma <= 100
     )
   }
 
   if (kind === 'light-label') {
     return ({ gray, chroma }) => (
-      gray >= 135 &&
+      gray >= 128 &&
       gray <= 255 &&
-      chroma <= 78
+      chroma <= 85
     )
   }
 
   if (kind === 'dark-label') {
     return ({ gray, chroma }) => (
-      gray >= 45 &&
-      gray <= 185 &&
-      chroma <= 70
+      gray >= 42 &&
+      gray <= 190 &&
+      chroma <= 78
     )
   }
 
@@ -226,7 +238,7 @@ function createMaskClassifier(kind) {
 function measureZoneStats(bitmap, zone) {
   const safe = clampZone(bitmap, zone)
 
-  const maxW = 120
+  const maxW = 130
   const scale = Math.min(1, maxW / safe.width)
 
   const w = Math.max(1, Math.floor(safe.width * scale))
@@ -299,7 +311,7 @@ function measureZoneStats(bitmap, zone) {
       const current = grays[y * w + x]
       const previous = grays[y * w + x - 1]
 
-      if (Math.abs(current - previous) >= 22) {
+      if (Math.abs(current - previous) >= 18) {
         edgeCount += 1
       }
 
@@ -324,32 +336,28 @@ function scoreVisualQuality(bitmap, zone, kind) {
 
   let score = 0
 
-  // Debe parecer etiqueta horizontal.
-  if (ratio >= 1.4 && ratio <= 7.8) score += 35
-  if (ratio >= 2.0 && ratio <= 5.8) score += 25
+  if (ratio >= 1.25 && ratio <= 9.5) score += 35
+  if (ratio >= 1.8 && ratio <= 6.8) score += 25
 
-  // Debe tener algo de contraste interno, porque hay letras.
-  if (stats.stdGray >= 10 && stats.stdGray <= 80) score += 25
-  if (stats.edgeRatio >= 0.08 && stats.edgeRatio <= 0.55) score += 30
+  if (stats.stdGray >= 7 && stats.stdGray <= 90) score += 22
+  if (stats.edgeRatio >= 0.025 && stats.edgeRatio <= 0.65) score += 26
 
-  // Evita flores/mantel por color.
-  if (stats.coloredRatio <= 0.18) score += 25
-  if (stats.avgChroma <= 62) score += 20
+  if (stats.coloredRatio <= 0.26) score += 22
+  if (stats.avgChroma <= 72) score += 18
 
   if (kind.includes('light')) {
-    if (stats.avgGray >= 120) score += 20
-    if (stats.brightRatio >= 0.25) score += 12
+    if (stats.avgGray >= 115) score += 20
+    if (stats.brightRatio >= 0.18) score += 10
   }
 
   if (kind.includes('dark')) {
-    if (stats.avgGray >= 45 && stats.avgGray <= 178) score += 20
-    if (stats.darkRatio >= 0.12 || stats.brightRatio >= 0.10) score += 12
+    if (stats.avgGray >= 42 && stats.avgGray <= 190) score += 20
+    if (stats.darkRatio >= 0.08 || stats.brightRatio >= 0.08) score += 10
   }
 
-  // Penalizaciones fuertes.
-  if (stats.coloredRatio >= 0.32) score -= 80
-  if (stats.edgeRatio < 0.025) score -= 45
-  if (ratio < 1.0 || ratio > 10.5) score -= 60
+  if (stats.coloredRatio >= 0.42) score -= 70
+  if (stats.edgeRatio < 0.015) score -= 40
+  if (ratio < 1.0 || ratio > 11.5) score -= 55
 
   return {
     score: Math.round(score),
@@ -372,14 +380,14 @@ function componentToStickerBody(bitmap, component, scale, imageArea) {
   const ratio = originalW / Math.max(1, originalH)
   const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
 
-  if (originalW < bitmap.width * 0.13) return null
-  if (originalH < bitmap.height * 0.08) return null
-  if (originalW > bitmap.width * 0.96) return null
-  if (originalH > bitmap.height * 0.96) return null
+  if (originalW < bitmap.width * 0.12) return null
+  if (originalH < bitmap.height * 0.07) return null
+  if (originalW > bitmap.width * 0.98) return null
+  if (originalH > bitmap.height * 0.98) return null
 
-  if (ratio < 0.35 || ratio > 3.8) return null
-  if (fillRatio < 0.16) return null
-  if (imageAreaRatio < 0.018 || imageAreaRatio > 0.72) return null
+  if (ratio < 0.30 || ratio > 4.2) return null
+  if (fillRatio < 0.13) return null
+  if (imageAreaRatio < 0.014 || imageAreaRatio > 0.78) return null
 
   const base = {
     x: originalX,
@@ -392,9 +400,9 @@ function componentToStickerBody(bitmap, component, scale, imageArea) {
 
   let score = 120
 
-  score += Math.min(55, imageAreaRatio * 220)
+  score += Math.min(60, imageAreaRatio * 220)
   score += Math.min(35, fillRatio * 40)
-  score -= Math.abs(ratio - 1.45) * 7
+  score -= Math.abs(ratio - 1.45) * 6
 
   return {
     ...expanded,
@@ -408,7 +416,7 @@ function componentToStickerBody(bitmap, component, scale, imageArea) {
   }
 }
 
-function componentToDirectLabel(bitmap, component, scale, kind, imageArea) {
+function componentToDirectLabels(bitmap, component, scale, kind, imageArea) {
   const boxW = component.maxX - component.minX + 1
   const boxH = component.maxY - component.minY + 1
   const area = boxW * boxH
@@ -420,16 +428,16 @@ function componentToDirectLabel(bitmap, component, scale, kind, imageArea) {
   const originalW = Math.floor(boxW / scale)
   const originalH = Math.floor(boxH / scale)
 
-  if (originalW < 22 || originalH < 8) return null
-  if (originalW > bitmap.width * 0.34) return null
-  if (originalH > bitmap.height * 0.13) return null
+  if (originalW < 18 || originalH < 8) return []
+  if (originalW > bitmap.width * 0.36) return []
+  if (originalH > bitmap.height * 0.14) return []
 
-  if (ratio < 1.20 || ratio > 9.8) return null
-  if (fillRatio < 0.22) return null
+  if (ratio < 0.90 || ratio > 10.5) return []
+  if (fillRatio < 0.16) return []
 
   const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
 
-  if (imageAreaRatio < 0.00012 || imageAreaRatio > 0.040) return null
+  if (imageAreaRatio < 0.00008 || imageAreaRatio > 0.045) return []
 
   const base = {
     x: originalX,
@@ -438,35 +446,57 @@ function componentToDirectLabel(bitmap, component, scale, kind, imageArea) {
     height: originalH,
   }
 
-  const expanded = kind === 'light-label'
-    ? expandZone(bitmap, base, 0.07, 0.12)
-    : expandZone(bitmap, base, 0.09, 0.14)
+  const tight = kind === 'light-label'
+    ? expandZone(bitmap, base, 0.08, 0.14)
+    : expandZone(bitmap, base, 0.10, 0.16)
 
-  const visual = scoreVisualQuality(bitmap, expanded, kind)
+  const wide = expandLabelWide(
+    bitmap,
+    base,
+    kind === 'light-label' ? 'light-label-wide' : 'dark-label-wide'
+  )
 
-  if (visual.score < 25) return null
-
-  let score = 210
-
-  score += visual.score
-  score += Math.min(35, fillRatio * 38)
-  score -= Math.abs(ratio - 3.8) * 3
-
-  if (kind === 'dark-label') score += 12
-  if (kind === 'light-label') score += 8
-
-  return {
-    ...expanded,
-    kind,
-    score: Math.round(score),
-    meta: {
-      ratio: Number(ratio.toFixed(2)),
-      fillRatio: Number(fillRatio.toFixed(2)),
-      area: Number(imageAreaRatio.toFixed(4)),
-      ...visual.stats,
-      visual: visual.score,
+  const rawCandidates = [
+    {
+      ...tight,
+      kind: kind === 'light-label' ? 'direct-light-tight' : 'direct-dark-tight',
+      baseScore: 260,
     },
-  }
+    {
+      ...wide,
+      kind: kind === 'light-label' ? 'direct-light-wide' : 'direct-dark-wide',
+      baseScore: 245,
+    },
+  ]
+
+  return rawCandidates
+    .map(candidate => {
+      const visual = scoreVisualQuality(bitmap, candidate, candidate.kind)
+
+      if (visual.score < 14) return null
+
+      let score = candidate.baseScore
+
+      score += visual.score
+      score += Math.min(34, fillRatio * 36)
+      score -= Math.abs(ratio - 3.7) * 2
+
+      if (candidate.kind.includes('dark')) score += 10
+      if (candidate.kind.includes('wide')) score += 16
+
+      return {
+        ...candidate,
+        score: Math.round(score),
+        meta: {
+          ratio: Number(ratio.toFixed(2)),
+          fillRatio: Number(fillRatio.toFixed(2)),
+          area: Number(imageAreaRatio.toFixed(4)),
+          ...visual.stats,
+          visual: visual.score,
+        },
+      }
+    })
+    .filter(Boolean)
 }
 
 function detectComponents(bitmap, kind) {
@@ -561,18 +591,22 @@ function detectComponents(bitmap, kind) {
         count,
       }
 
-      let candidate = null
-
       if (kind === 'sticker-body') {
-        candidate = componentToStickerBody(bitmap, component, scale, imageArea)
+        const candidate = componentToStickerBody(bitmap, component, scale, imageArea)
+
+        if (candidate && isReadableZone(bitmap, candidate)) {
+          results.push(candidate)
+        }
       }
 
       if (kind === 'light-label' || kind === 'dark-label') {
-        candidate = componentToDirectLabel(bitmap, component, scale, kind, imageArea)
-      }
+        const labelCandidates = componentToDirectLabels(bitmap, component, scale, kind, imageArea)
 
-      if (candidate && isReadableZone(bitmap, candidate)) {
-        results.push(candidate)
+        labelCandidates.forEach(candidate => {
+          if (candidate && isReadableZone(bitmap, candidate)) {
+            results.push(candidate)
+          }
+        })
       }
     }
   }
@@ -583,28 +617,28 @@ function detectComponents(bitmap, kind) {
 function makeTopRightCandidatesFromBody(bitmap, body, index) {
   const zones = [
     {
-      name: 'tight',
-      x: 0.58,
-      y: 0.020,
-      w: 0.38,
-      h: 0.130,
-      score: 330,
+      name: 'wide',
+      x: 0.49,
+      y: 0.000,
+      w: 0.50,
+      h: 0.205,
+      score: 320,
     },
     {
-      name: 'wide',
-      x: 0.51,
-      y: 0.005,
-      w: 0.47,
-      h: 0.175,
-      score: 310,
+      name: 'tight',
+      x: 0.56,
+      y: 0.015,
+      w: 0.42,
+      h: 0.155,
+      score: 335,
     },
     {
       name: 'small',
-      x: 0.62,
+      x: 0.61,
       y: 0.030,
-      w: 0.31,
-      h: 0.100,
-      score: 315,
+      w: 0.34,
+      h: 0.110,
+      score: 325,
     },
   ]
 
@@ -621,7 +655,7 @@ function makeTopRightCandidatesFromBody(bitmap, body, index) {
     const darkVisual = scoreVisualQuality(bitmap, crop, 'dark-label')
     const lightVisual = scoreVisualQuality(bitmap, crop, 'light-label')
 
-    if (darkVisual.score >= 20) {
+    if (darkVisual.score >= 12) {
       candidates.push({
         ...crop,
         kind: `body${index + 1}-${zone.name}-dark`,
@@ -635,11 +669,11 @@ function makeTopRightCandidatesFromBody(bitmap, body, index) {
       })
     }
 
-    if (lightVisual.score >= 20) {
+    if (lightVisual.score >= 12) {
       candidates.push({
         ...crop,
         kind: `body${index + 1}-${zone.name}-light`,
-        score: zone.score + Math.round(body.score || 0) + lightVisual.score - 8,
+        score: zone.score + Math.round(body.score || 0) + lightVisual.score - 6,
         parentBody: body,
         meta: {
           ...lightVisual.stats,
@@ -653,103 +687,109 @@ function makeTopRightCandidatesFromBody(bitmap, body, index) {
   return candidates.filter(candidate => isReadableZone(bitmap, candidate))
 }
 
-function keepLabelsRelatedToBodies(labels, bodies) {
+function boostDirectLabelsWithBodies(labels, bodies) {
   if (!bodies.length) {
     return labels
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 6)
   }
 
-  return labels
-    .map(label => {
-      const body = bodies.find(candidateBody =>
-        isInside(label, candidateBody, 0.08) &&
-        isTopRightOfBody(label, candidateBody)
-      )
+  return labels.map(label => {
+    const body = bodies.find(candidateBody =>
+      isInside(label, candidateBody, 0.10) &&
+      isTopRightOfBody(label, candidateBody)
+    )
 
-      if (!body) return null
-
+    if (!body) {
       return {
         ...label,
-        kind: `direct-${label.kind}`,
-        score: label.score + 220 + Math.round(body.score || 0),
-        parentBody: body,
+        score: label.score - 35,
       }
-    })
-    .filter(Boolean)
+    }
+
+    return {
+      ...label,
+      kind: `body-direct-${label.kind}`,
+      score: label.score + 240 + Math.round(body.score || 0),
+      parentBody: body,
+    }
+  })
 }
 
-function addSinglePhotoBackups(bitmap, bodies, directLabels) {
-  const shouldUseBackups = bodies.length <= 3 && directLabels.length <= 8
+function addSinglePhotoBackups(bitmap, bodies, labels) {
+  const likelySingle = bodies.length <= 4 && labels.length <= 16
 
-  if (!shouldUseBackups) return []
+  if (!likelySingle) return []
 
   const { width, height } = bitmap
 
   const backups = [
     {
-      x: Math.floor(width * 0.615),
-      y: Math.floor(height * 0.315),
-      width: Math.floor(width * 0.255),
-      height: Math.floor(height * 0.065),
-      kind: 'backup-single-fwc-tight',
-      score: 410,
-    },
-    {
       x: Math.floor(width * 0.590),
       y: Math.floor(height * 0.125),
-      width: Math.floor(width * 0.255),
-      height: Math.floor(height * 0.085),
+      width: Math.floor(width * 0.275),
+      height: Math.floor(height * 0.090),
       kind: 'backup-single-arg-tight',
-      score: 410,
+      score: 900,
+      forced: true,
     },
     {
       x: Math.floor(width * 0.555),
-      y: Math.floor(height * 0.110),
-      width: Math.floor(width * 0.330),
-      height: Math.floor(height * 0.115),
+      y: Math.floor(height * 0.108),
+      width: Math.floor(width * 0.345),
+      height: Math.floor(height * 0.120),
       kind: 'backup-single-arg-wide',
-      score: 385,
+      score: 860,
+      forced: true,
     },
     {
-      x: Math.floor(width * 0.595),
+      x: Math.floor(width * 0.610),
       y: Math.floor(height * 0.300),
-      width: Math.floor(width * 0.315),
-      height: Math.floor(height * 0.095),
+      width: Math.floor(width * 0.285),
+      height: Math.floor(height * 0.085),
+      kind: 'backup-single-fwc-tight',
+      score: 900,
+      forced: true,
+    },
+    {
+      x: Math.floor(width * 0.580),
+      y: Math.floor(height * 0.285),
+      width: Math.floor(width * 0.360),
+      height: Math.floor(height * 0.125),
       kind: 'backup-single-fwc-wide',
-      score: 385,
+      score: 860,
+      forced: true,
     },
   ]
-    .filter(region => isReadableZone(bitmap, region))
-    .map(region => {
-      const visual = scoreVisualQuality(bitmap, region, region.kind.includes('arg') ? 'dark-label' : 'light-label')
 
-      return {
-        ...region,
-        score: region.score + visual.score,
-        meta: {
-          ...visual.stats,
-          visual: visual.score,
-          ratio: visual.ratio,
-        },
-      }
-    })
-    .filter(region => Number(region.meta?.visual || 0) >= 18)
+  return backups.filter(region => isReadableZone(bitmap, region))
+}
 
-  return backups
+function filterCandidateNoise(candidate) {
+  if (candidate.forced) return true
+
+  const stats = candidate.meta || {}
+
+  if (Number(stats.coloredRatio || 0) >= 0.50) return false
+  if (Number(stats.edgeRatio || 0) < 0.010) return false
+
+  const ratio = candidate.width / Math.max(1, candidate.height)
+
+  if (ratio < 0.90 || ratio > 12.0) return false
+
+  return true
 }
 
 function detectPreciseCodeCandidates(bitmap) {
   const rawBodies = detectComponents(bitmap, 'sticker-body')
+
   const bodies = removeOverlappingRegions(
     rawBodies.sort((a, b) => b.score - a.score),
-    0.62
-  ).slice(0, 12)
+    0.64
+  ).slice(0, 14)
 
   const directLightLabels = detectComponents(bitmap, 'light-label')
   const directDarkLabels = detectComponents(bitmap, 'dark-label')
 
-  const directLabels = keepLabelsRelatedToBodies(
+  const directLabels = boostDirectLabelsWithBodies(
     [
       ...directDarkLabels,
       ...directLightLabels,
@@ -764,22 +804,14 @@ function detectPreciseCodeCandidates(bitmap) {
   const backups = addSinglePhotoBackups(bitmap, bodies, directLabels)
 
   let candidates = uniqueZones([
+    ...backups,
     ...directLabels,
     ...bodyCornerCandidates,
-    ...backups,
   ])
     .filter(candidate => isReadableZone(bitmap, candidate))
+    .filter(filterCandidateNoise)
 
-  candidates = candidates.filter(candidate => {
-    const stats = candidate.meta || measureZoneStats(bitmap, candidate)
-
-    if (Number(stats.coloredRatio || 0) >= 0.35) return false
-    if (Number(stats.edgeRatio || 0) < 0.02) return false
-
-    return true
-  })
-
-  candidates = removeOverlappingRegions(candidates, 0.48)
+  candidates = removeOverlappingRegions(candidates, 0.50)
     .sort((a, b) => b.score - a.score)
 
   return candidates.slice(0, MAX_DEBUG_CANDIDATES)

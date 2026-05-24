@@ -2049,11 +2049,24 @@ a {
   left: 50%;
   bottom: calc(var(--bottom-nav-clearance) - 16px);
   transform: translateX(-50%);
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(15, 23, 42, 0.94);
   color: white;
   box-shadow: 0 14px 28px rgba(15, 23, 42, 0.2);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(94vw, 640px);
+  white-space: nowrap;
+}
+
+.toast-action {
+  border: 0;
+  background: transparent;
+  color: #93c5fd;
+  font-weight: 700;
+  padding: 0;
 }
 
 @media (max-width: 390px) {
@@ -3905,25 +3918,37 @@ a {
 }
 
 .duplicate-filter-group {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 8px 2px 2px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding-top: 8px;
   margin-top: 8px;
 }
 
 .chip-filter {
-  border: 1px solid var(--line-soft);
-  background: #fff;
-  color: var(--text-main);
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, white);
+  background: color-mix(in srgb, var(--orange) 8%, white);
+  color: #9a3412;
   border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 0.78rem;
-  white-space: nowrap;
+  padding: 7px 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .chip-filter.is-active {
   border-color: var(--orange);
-  color: var(--orange);
-  background: color-mix(in srgb, var(--orange) 10%, white);
+  color: #fff;
+  background: var(--orange);
+}
+
+@media (max-width: 460px) {
+  .duplicate-filter-group {
+    gap: 4px;
+  }
+
+  .chip-filter {
+    font-size: 0.68rem;
+    padding: 6px 4px;
+  }
 }

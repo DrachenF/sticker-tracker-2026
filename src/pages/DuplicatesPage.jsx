@@ -51,10 +51,15 @@ function DuplicatesPage({
 
   const filteredDuplicateStickers = useMemo(() => {
     if (duplicateFilter === 'all') return duplicateStickers
-    if (duplicateFilter === '3plus') return duplicateStickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) >= 3)
+    if (duplicateFilter === '4plus') return duplicateStickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) >= 4)
     const exact = Number(duplicateFilter)
     return duplicateStickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) === exact)
   }, [duplicateFilter, duplicateStickers, collection])
+
+  const filteredDuplicateCopies = useMemo(
+    () => filteredDuplicateStickers.reduce((acc, sticker) => acc + (collection[sticker.code]?.duplicates ?? 0), 0),
+    [filteredDuplicateStickers, collection],
+  )
 
   const duplicateSections = useMemo(
     () => buildSections(filteredDuplicateStickers, teams),
@@ -230,7 +235,7 @@ function DuplicatesPage({
         <div className="panel-header">
           <div>
             <p className="page-label">Resumen</p>
-            <h3>{duplicateStickers.length} estampitas con repetidas</h3>
+            <h3>{filteredDuplicateCopies} repetidas</h3>
           </div>
         </div>
 
@@ -256,10 +261,11 @@ function DuplicatesPage({
         </div>
 
         <div className="duplicate-filter-group" role="group" aria-label="Filtrar repetidas">
-          <button type="button" className={`chip-filter ${duplicateFilter === '1' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('1')}>Me sobran 1</button>
-          <button type="button" className={`chip-filter ${duplicateFilter === '2' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('2')}>Me sobran 2</button>
-          <button type="button" className={`chip-filter ${duplicateFilter === '3plus' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('3plus')}>Me sobran 3 o más</button>
           <button type="button" className={`chip-filter ${duplicateFilter === 'all' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('all')}>Todas</button>
+          <button type="button" className={`chip-filter ${duplicateFilter === '1' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('1')}>x1</button>
+          <button type="button" className={`chip-filter ${duplicateFilter === '2' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('2')}>x2</button>
+          <button type="button" className={`chip-filter ${duplicateFilter === '3' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('3')}>x3</button>
+          <button type="button" className={`chip-filter ${duplicateFilter === '4plus' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('4plus')}>x4+</button>
         </div>
       </section>
 

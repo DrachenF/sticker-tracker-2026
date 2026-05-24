@@ -38,17 +38,27 @@ function DuplicatesPage({
   onCopyText,
   onShareWhatsApp,
   onPageTurnSound,
+  onRevertLastDuplicateAction,
+  canRevertDuplicateAction,
 }) {
   const [slideDir, setSlideDir] = useState('')
+  const [duplicateFilter, setDuplicateFilter] = useState('all')
 
   const duplicateStickers = useMemo(
     () => stickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) > 0),
     [stickers, collection]
   )
 
+  const filteredDuplicateStickers = useMemo(() => {
+    if (duplicateFilter === 'all') return duplicateStickers
+    if (duplicateFilter === '3plus') return duplicateStickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) >= 3)
+    const exact = Number(duplicateFilter)
+    return duplicateStickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) === exact)
+  }, [duplicateFilter, duplicateStickers, collection])
+
   const duplicateSections = useMemo(
-    () => buildSections(duplicateStickers, teams),
-    [duplicateStickers, teams]
+    () => buildSections(filteredDuplicateStickers, teams),
+    [filteredDuplicateStickers, teams]
   )
 
   const duplicateText = useMemo(
@@ -239,6 +249,17 @@ function DuplicatesPage({
           >
             Compartir por WhatsApp
           </button>
+        </div>
+
+        <div className="inline-revert-row">
+          <button type="button" className="text-revert-button" onClick={onRevertLastDuplicateAction} disabled={!canRevertDuplicateAction}>Revertir último cambio</button>
+        </div>
+
+        <div className="duplicate-filter-group" role="group" aria-label="Filtrar repetidas">
+          <button type="button" className={`chip-filter ${duplicateFilter === '1' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('1')}>Me sobran 1</button>
+          <button type="button" className={`chip-filter ${duplicateFilter === '2' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('2')}>Me sobran 2</button>
+          <button type="button" className={`chip-filter ${duplicateFilter === '3plus' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('3plus')}>Me sobran 3 o más</button>
+          <button type="button" className={`chip-filter ${duplicateFilter === 'all' ? 'is-active' : ''}`} onClick={() => setDuplicateFilter('all')}>Todas</button>
         </div>
       </section>
 

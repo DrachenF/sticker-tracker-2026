@@ -1064,6 +1064,21 @@ function App() {
     setToast({ text: 'Se revirtió el último cambio en repetidas.' })
   }
 
+
+  const handleRevertLastMissingAction = () => {
+    if (!lastMissingAction) return
+    setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastMissingAction.code, lastMissingAction.previousState))
+    setLastMissingAction(null)
+    setToast('Se revirtió el último cambio en faltantes.')
+  }
+
+  const handleRevertLastDuplicateAction = () => {
+    if (!lastDuplicateAction) return
+    setCollection((currentCollection) => pruneCollectionEntry(currentCollection, lastDuplicateAction.code, lastDuplicateAction.previousState))
+    setLastDuplicateAction(null)
+    setToast('Se revirtió el último cambio en repetidas.')
+  }
+
   const pageProps = {
     stickers,
     teams,

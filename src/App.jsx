@@ -61,6 +61,8 @@ const tabs = [
   { id: 'settings', label: 'Ajustes' },
 ]
 
+const navTabs = tabs.filter((tab) => tab.id !== 'camera')
+
 const infoPages = {
   '/como-usar': {
     label: 'Guía',
@@ -1194,7 +1196,7 @@ function App() {
 
       <BottomNav
         ref={navRef}
-        tabs={tabs}
+        tabs={navTabs}
         activeTab={activeTab}
         highlightedTabId={highlightedTabId}
         onChange={handleTabChange}

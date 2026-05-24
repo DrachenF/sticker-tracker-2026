@@ -52,6 +52,23 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
     setReadError('')
   }
 
+  const openCameraCapture = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.capture = 'environment'
+    input.onchange = handleFileChange
+    input.click()
+  }
+
+  const openImagePicker = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = handleFileChange
+    input.click()
+  }
+
   const runZoneOCR = async (recognize, bitmap, zone, zoneIndex) => {
     const attempts = [
       { rotate: 0, invert: false },
@@ -181,7 +198,13 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
         <p className="camera-warning">Esta función está en prueba. Revisa los códigos antes de guardar.</p>
         <p className="camera-empty">Para mejores resultados, coloca las estampitas con el código visible, buena luz y evita que una tape el código de otra.</p>
       </header>
-      <label className="camera-input-card"><span>Tomar foto o subir imagen</span><input type="file" accept="image/*" capture="environment" onChange={handleFileChange} /></label>
+      <div className="camera-input-card">
+        <span>Tomar foto o subir imagen</span>
+        <div className="camera-actions">
+          <button type="button" onClick={openCameraCapture}>Abrir cámara</button>
+          <button type="button" onClick={openImagePicker}>Subir imagen</button>
+        </div>
+      </div>
       {previewUrl ? (
         <div className="camera-preview-wrap">
           <img className="camera-preview" src={previewUrl} alt="Vista previa" />

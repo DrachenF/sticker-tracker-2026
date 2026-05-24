@@ -35,6 +35,8 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [debugRegions, setDebugRegions] = useState([])
   const [imageMeta, setImageMeta] = useState({ width: 1, height: 1 })
+  const debugEnabled = useMemo(() => new URLSearchParams(window.location.search).get('cameraDebug') === '1', [])
+  const validCodeSet = useMemo(() => new Set(stickers.map((item) => String(item.code || '').toUpperCase())), [stickers])
 
   const previewUrl = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : ''), [imageFile])
 
@@ -117,7 +119,7 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
       const bitmap = await createImageBitmap(imageFile)
       setImageMeta({ width: bitmap.width, height: bitmap.height })
       const regions = detectCodeLabelRegions(bitmap)
-      setDebugRegions(regions)
+      setDebugRegions(debugEnabled ? regions : [])
 
       const zoneReadings = []
       for (let i = 0; i < regions.length; i += 1) {
@@ -149,7 +151,11 @@ export default function CameraAddPage({ stickers, onApplyDetectedSticker }) {
 
   const handleSaveSelected = () => {
     const all = [...results.good, ...results.review]
-    const picked = all.filter((item) => selectedIds.has(item.id)).map((item) => item.manualCode || item.code).filter(Boolean)
+    const picked = all
+      .filter((item) => selectedIds.has(item.id))
+      .map((item) => (item.manualCode || item.code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''))
+      .filter(Boolean)
+      .filter((code) => validCodeSet.has(code))
     if (!picked.length) return
     if (!window.confirm(`Se guardarán ${picked.length} códigos. Revisa antes de confirmar.`)) return
     picked.forEach((code) => onApplyDetectedSticker(code))

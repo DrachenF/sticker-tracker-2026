@@ -6,37 +6,13 @@ const OCR_SCALE = 9
 const OCR_MIN_WIDTH = 24
 const OCR_MIN_HEIGHT = 9
 
-const MAX_OCR_CANDIDATES = 26
+const MAX_OCR_CANDIDATES = 15 // Reducido porque ahora somos mucho más precisos
 const OCR_TIME_LIMIT_MS = 18000
 
 const COMMON_FALLBACK_PREFIXES = [
-  'FWC',
-  'MEX',
-  'RSA',
-  'KOR',
-  'CZE',
-  'CAN',
-  'BIH',
-  'QAT',
-  'SUI',
-  'HAI',
-  'SCO',
-  'USA',
-  'PAR',
-  'TUR',
-  'BRA',
-  'MAR',
-  'ARG',
-  'URU',
-  'COL',
-  'ESP',
-  'FRA',
-  'ENG',
-  'GER',
-  'POR',
-  'ITA',
-  'NED',
-  'BEL',
+  'FWC', 'MEX', 'RSA', 'KOR', 'CZE', 'CAN', 'BIH', 'QAT', 'SUI', 'HAI', 
+  'SCO', 'USA', 'PAR', 'TUR', 'BRA', 'MAR', 'ARG', 'URU', 'COL', 'ESP', 
+  'FRA', 'ENG', 'GER', 'POR', 'ITA', 'NED', 'BEL',
 ]
 
 function normalizeRaw(value) {
@@ -46,9 +22,7 @@ function normalizeRaw(value) {
 function normalizeStickerCode(value) {
   const raw = normalizeRaw(value)
   const match = raw.match(/^([A-Z]{3})0*(\d{1,3})$/)
-
   if (!match) return raw
-
   return `${match[1]}${Number(match[2])}`
 }
 
@@ -67,55 +41,37 @@ function normalizeNumberLike(value) {
 function getStickerCode(sticker) {
   if (typeof sticker === 'string') return sticker
   if (typeof sticker === 'number') return String(sticker)
-
-  return (
-    sticker?.code ||
-    sticker?.codigo ||
-    sticker?.id ||
-    sticker?.label ||
-    sticker?.number ||
-    ''
-  )
+  return sticker?.code || sticker?.codigo || sticker?.id || sticker?.label || sticker?.number || ''
 }
 
 function collectStickerCodes(input, output = []) {
   if (!input) return output
-
   if (typeof input === 'string' || typeof input === 'number') {
     output.push(String(input))
     return output
   }
-
   if (Array.isArray(input)) {
     input.forEach(item => collectStickerCodes(item, output))
     return output
   }
-
   if (typeof input === 'object') {
     const directCode = getStickerCode(input)
-
-    if (directCode) {
-      output.push(String(directCode))
-    }
-
+    if (directCode) output.push(String(directCode))
     Object.entries(input).forEach(([key, value]) => {
       output.push(String(key))
       collectStickerCodes(value, output)
     })
   }
-
   return output
 }
 
 function buildValidStickerData(stickers) {
   const stickerCodes = collectStickerCodes(stickers)
-
   const validCodes = new Set(
     stickerCodes
       .map(normalizeStickerCode)
       .filter(code => /^[A-Z]{3}\d{1,3}$/.test(code))
   )
-
   const detectedPrefixes = Array.from(
     new Set(
       Array.from(validCodes)
@@ -123,11 +79,7 @@ function buildValidStickerData(stickers) {
         .filter(Boolean)
     )
   )
-
-  const validPrefixes = validCodes.size
-    ? detectedPrefixes
-    : COMMON_FALLBACK_PREFIXES
-
+  const validPrefixes = validCodes.size ? detectedPrefixes : COMMON_FALLBACK_PREFIXES
   return {
     validCodes,
     validPrefixes,
@@ -141,40 +93,15 @@ function escapeRegExp(value) {
 
 function sanitizeText(text) {
   const stopWords = [
-    'FIFA',
-    'WORLD',
-    'CUP',
-    '2026',
-    'OFFICIAL',
-    'LICENSED',
-    'PRODUCT',
-    'PANINI',
-    'BRASIL',
-    'BRAZIL',
-    'MADE',
-    'WWW',
-    'COM',
-    'MANUFACTURED',
-    'UNDER',
-    'LICENCE',
-    'LICENSE',
-    'TRADEMARKS',
-    'COPYRIGHTS',
-    'TOURNAMENTS',
-    'EVENTS',
-    'LOGOS',
-    'BRAND',
-    'ELEMENTS',
-    'DESIGNS',
-    'NAMES',
+    'FIFA', 'WORLD', 'CUP', '2026', 'OFFICIAL', 'LICENSED', 'PRODUCT',
+    'PANINI', 'BRASIL', 'BRAZIL', 'MADE', 'WWW', 'COM', 'MANUFACTURED',
+    'UNDER', 'LICENCE', 'LICENSE', 'TRADEMARKS', 'COPYRIGHTS',
+    'TOURNAMENTS', 'EVENTS', 'LOGOS', 'BRAND', 'ELEMENTS', 'DESIGNS', 'NAMES',
   ]
-
   let clean = String(text || '').toUpperCase()
-
   stopWords.forEach(word => {
     clean = clean.replace(new RegExp(`\\b${word}\\b`, 'g'), ' ')
   })
-
   return clean
 }
 
@@ -182,39 +109,21 @@ function buildTextCandidates(rawText) {
   const text = sanitizeText(rawText)
   const candidates = []
 
-  text
-    .split(/\n+/)
-    .map(line => line.trim())
-    .filter(Boolean)
-    .forEach(line => {
-      const spaced = line.replace(/[^A-Z0-9]+/g, ' ').trim()
-      const compact = normalizeRaw(line)
-
-      if (spaced && spaced.length <= 28) {
-        candidates.push(spaced)
-      }
-
-      if (compact && compact.length <= 28) {
-        candidates.push(compact)
-      }
-    })
+  text.split(/\n+/).map(line => line.trim()).filter(Boolean).forEach(line => {
+    const spaced = line.replace(/[^A-Z0-9]+/g, ' ').trim()
+    const compact = normalizeRaw(line)
+    if (spaced && spaced.length <= 28) candidates.push(spaced)
+    if (compact && compact.length <= 28) candidates.push(compact)
+  })
 
   const compactFull = normalizeRaw(text)
-
-  if (compactFull && compactFull.length <= 34) {
-    candidates.push(compactFull)
-  }
+  if (compactFull && compactFull.length <= 34) candidates.push(compactFull)
 
   return Array.from(new Set(candidates))
 }
 
 function extractValidCodesFromText(rawText, validStickerData) {
-  const {
-    validCodes,
-    validPrefixes,
-    hasCatalog,
-  } = validStickerData
-
+  const { validCodes, validPrefixes, hasCatalog } = validStickerData
   if (!validPrefixes.length) return []
 
   const prefixes = validPrefixes.map(escapeRegExp).join('|')
@@ -222,47 +131,25 @@ function extractValidCodesFromText(rawText, validStickerData) {
   const extractedCodes = []
 
   candidates.forEach(source => {
-    const normalRegex = new RegExp(
-      `(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`,
-      'g'
-    )
-
-    const compactExactRegex = new RegExp(
-      `^(${prefixes})([0-9OQDISBLZG]{1,3})$`
-    )
-
-    const compactStartRegex = new RegExp(
-      `^(${prefixes})([0-9OQDISBLZG]{1,3})`
-    )
+    const normalRegex = new RegExp(`(^|\\b)(${prefixes})\\s*([0-9OQDISBLZG]{1,3})($|\\b)`, 'g')
+    const compactExactRegex = new RegExp(`^(${prefixes})([0-9OQDISBLZG]{1,3})$`)
+    const compactStartRegex = new RegExp(`^(${prefixes})([0-9OQDISBLZG]{1,3})`)
 
     let match
-
     while ((match = normalRegex.exec(source)) !== null) {
-      const prefix = match[2]
       const number = normalizeNumberLike(match[3])
-
       if (!number) continue
-
-      const code = normalizeStickerCode(`${prefix}${number}`)
-
-      if (!hasCatalog || validCodes.has(code)) {
-        extractedCodes.push(code)
-      }
+      const code = normalizeStickerCode(`${match[2]}${number}`)
+      if (!hasCatalog || validCodes.has(code)) extractedCodes.push(code)
     }
 
     const compact = normalizeRaw(source)
     const compactMatch = compact.match(compactExactRegex) || compact.match(compactStartRegex)
-
     if (compactMatch) {
-      const prefix = compactMatch[1]
       const number = normalizeNumberLike(compactMatch[2])
-
       if (number) {
-        const code = normalizeStickerCode(`${prefix}${number}`)
-
-        if (!hasCatalog || validCodes.has(code)) {
-          extractedCodes.push(code)
-        }
+        const code = normalizeStickerCode(`${compactMatch[1]}${number}`)
+        if (!hasCatalog || validCodes.has(code)) extractedCodes.push(code)
       }
     }
   })
@@ -271,42 +158,20 @@ function extractValidCodesFromText(rawText, validStickerData) {
 }
 
 function clampZone(bitmap, zone) {
-  const rawX = Math.floor(zone?.x || 0)
-  const rawY = Math.floor(zone?.y || 0)
-
-  const x = Math.max(0, Math.min(rawX, bitmap.width - 1))
-  const y = Math.max(0, Math.min(rawY, bitmap.height - 1))
-
-  const width = Math.max(
-    1,
-    Math.min(Math.floor(zone?.width || 1), bitmap.width - x)
-  )
-
-  const height = Math.max(
-    1,
-    Math.min(Math.floor(zone?.height || 1), bitmap.height - y)
-  )
-
-  return {
-    x,
-    y,
-    width,
-    height,
-  }
+  const x = Math.max(0, Math.min(Math.floor(zone?.x || 0), bitmap.width - 1))
+  const y = Math.max(0, Math.min(Math.floor(zone?.y || 0), bitmap.height - 1))
+  const width = Math.max(1, Math.min(Math.floor(zone?.width || 1), bitmap.width - x))
+  const height = Math.max(1, Math.min(Math.floor(zone?.height || 1), bitmap.height - y))
+  return { x, y, width, height }
 }
 
 function isReadableZone(bitmap, zone) {
   const safeZone = clampZone(bitmap, zone)
-
-  return (
-    safeZone.width >= OCR_MIN_WIDTH &&
-    safeZone.height >= OCR_MIN_HEIGHT
-  )
+  return safeZone.width >= OCR_MIN_WIDTH && safeZone.height >= OCR_MIN_HEIGHT
 }
 
-function expandZone(bitmap, zone, amountX = 0.12, amountY = 0.18) {
+function expandZone(bitmap, zone, amountX = 0.15, amountY = 0.25) {
   const safeZone = clampZone(bitmap, zone)
-
   const extraX = Math.floor(safeZone.width * amountX)
   const extraY = Math.floor(safeZone.height * amountY)
 
@@ -320,92 +185,54 @@ function expandZone(bitmap, zone, amountX = 0.12, amountY = 0.18) {
 
 function uniqueZones(zones) {
   const seen = new Set()
-
   return zones.filter(zone => {
     const key = [
-      Math.round(zone?.x || 0),
-      Math.round(zone?.y || 0),
-      Math.round(zone?.width || 0),
-      Math.round(zone?.height || 0),
-      zone?.kind || '',
+      Math.round(zone?.x || 0), Math.round(zone?.y || 0),
+      Math.round(zone?.width || 0), Math.round(zone?.height || 0)
     ].join('|')
-
     if (seen.has(key)) return false
-
     seen.add(key)
     return true
   })
 }
 
 function regionIoU(a, b) {
-  const ax1 = a.x
-  const ay1 = a.y
-  const ax2 = a.x + a.width
-  const ay2 = a.y + a.height
-
-  const bx1 = b.x
-  const by1 = b.y
-  const bx2 = b.x + b.width
-  const by2 = b.y + b.height
-
-  const ix1 = Math.max(ax1, bx1)
-  const iy1 = Math.max(ay1, by1)
-  const ix2 = Math.min(ax2, bx2)
-  const iy2 = Math.min(ay2, by2)
-
+  const ix1 = Math.max(a.x, b.x)
+  const iy1 = Math.max(a.y, b.y)
+  const ix2 = Math.min(a.x + a.width, b.x + b.width)
+  const iy2 = Math.min(a.y + a.height, b.y + b.height)
+  
   const iw = Math.max(0, ix2 - ix1)
   const ih = Math.max(0, iy2 - iy1)
-
+  
   const intersection = iw * ih
   const union = (a.width * a.height) + (b.width * b.height) - intersection
-
-  if (!union) return 0
-
-  return intersection / union
+  return union ? intersection / union : 0
 }
 
 function removeOverlappingRegions(regions) {
   const sorted = [...regions].sort((a, b) => b.score - a.score)
   const kept = []
-
   sorted.forEach(region => {
-    const overlaps = kept.some(existing => regionIoU(existing, region) > 0.42)
-
-    if (!overlaps) {
+    if (!kept.some(existing => regionIoU(existing, region) > 0.35)) {
       kept.push(region)
     }
   })
-
   return kept
 }
 
 function workerCanvasToUrl(bitmap, zone) {
   const safeZone = clampZone(bitmap, zone)
-
   const c = document.createElement('canvas')
   c.width = safeZone.width
   c.height = safeZone.height
-
   const cx = c.getContext('2d')
-
-  cx.drawImage(
-    bitmap,
-    safeZone.x,
-    safeZone.y,
-    safeZone.width,
-    safeZone.height,
-    0,
-    0,
-    safeZone.width,
-    safeZone.height
-  )
-
+  cx.drawImage(bitmap, safeZone.x, safeZone.y, safeZone.width, safeZone.height, 0, 0, safeZone.width, safeZone.height)
   return c.toDataURL('image/jpeg', 0.86)
 }
 
-function buildOcrCanvas(bitmap, zone, mode = 'pill', scale = OCR_SCALE) {
+function buildOcrCanvas(bitmap, zone, mode = 'original', scale = OCR_SCALE) {
   const safeZone = clampZone(bitmap, zone)
-
   if (!isReadableZone(bitmap, safeZone)) return null
 
   const c = document.createElement('canvas')
@@ -415,168 +242,94 @@ function buildOcrCanvas(bitmap, zone, mode = 'pill', scale = OCR_SCALE) {
   const ctx = c.getContext('2d')
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(bitmap, safeZone.x, safeZone.y, safeZone.width, safeZone.height, 0, 0, c.width, c.height)
 
-  ctx.drawImage(
-    bitmap,
-    safeZone.x,
-    safeZone.y,
-    safeZone.width,
-    safeZone.height,
-    0,
-    0,
-    c.width,
-    c.height
-  )
-
-  if (mode === 'original') {
-    return c
-  }
+  if (mode === 'original') return c
 
   const imageData = ctx.getImageData(0, 0, c.width, c.height)
   const data = imageData.data
-
   let sum = 0
 
   for (let i = 0; i < data.length; i += 4) {
     const gray = Math.round((data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114))
-
-    data[i] = gray
-    data[i + 1] = gray
-    data[i + 2] = gray
-
+    data[i] = data[i + 1] = data[i + 2] = gray
     sum += gray
   }
 
-  const pixelCount = Math.max(1, data.length / 4)
-  const avgGray = sum / pixelCount
+  const avgGray = sum / Math.max(1, data.length / 4)
 
   for (let i = 0; i < data.length; i += 4) {
     const gray = data[i]
     let value = gray
 
-    if (mode === 'pill') {
-      value = gray >= 176 ? 255 : 0
+    if (mode === 'light-box-contrast') {
+      // Fondo claro, letras oscuras. Todo lo oscuro se vuelve negro.
+      value = gray < avgGray ? 0 : 255
     }
-
-    if (mode === 'pill-soft') {
-      value = gray >= 155 ? 255 : 0
+    if (mode === 'dark-box-invert') {
+      // Fondo oscuro, letras blancas. Todo lo claro se vuelve negro (invertido para Tesseract)
+      value = gray > avgGray ? 0 : 255
     }
-
-    if (mode === 'dark-label') {
-      // Letras blancas sobre etiqueta gris/oscura.
-      value = gray >= 132 ? 0 : 255
-    }
-
-    if (mode === 'dark-label-soft') {
-      value = gray >= 115 ? 0 : 255
-    }
-
     if (mode === 'contrast') {
-      value = ((gray - avgGray) * 3.2) + avgGray
+      value = ((gray - avgGray) * 3.5) + avgGray
       value = Math.max(0, Math.min(255, value))
     }
 
-    if (mode === 'avg-light') {
-      value = gray > avgGray - 8 ? 255 : 0
-    }
-
-    data[i] = value
-    data[i + 1] = value
-    data[i + 2] = value
+    data[i] = data[i + 1] = data[i + 2] = value
   }
 
   ctx.putImageData(imageData, 0, 0)
-
   return c
 }
 
 async function runOcrAttempt(recognize, bitmap, candidate, mode, pageSegMode = 7) {
   const canvas = buildOcrCanvas(bitmap, candidate, mode, OCR_SCALE)
-
   if (!canvas || canvas.width < OCR_MIN_WIDTH || canvas.height < OCR_MIN_HEIGHT) {
-    return {
-      confidence: 0,
-      text: '',
-    }
+    return { confidence: 0, text: '' }
   }
 
-  const imageDataUrl = canvas.toDataURL('image/png')
-
   try {
-    const result = await recognize(imageDataUrl, 'eng', {
+    const result = await recognize(canvas.toDataURL('image/png'), 'eng', {
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
       tessedit_pageseg_mode: String(pageSegMode),
       preserve_interword_spaces: '1',
       user_defined_dpi: '300',
     })
-
     return {
       confidence: Number(result?.data?.confidence ?? 0),
       text: String(result?.data?.text || ''),
     }
   } catch (error) {
     console.warn('OCR attempt failed:', error)
-
-    return {
-      confidence: 0,
-      text: '',
-    }
+    return { confidence: 0, text: '' }
   }
 }
 
 function getPixelInfo(data, index) {
   const i = index * 4
-  const r = data[i]
-  const g = data[i + 1]
-  const b = data[i + 2]
-
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  const gray = Math.round((r * 0.299) + (g * 0.587) + (b * 0.114))
-  const chroma = max - min
-
-  return {
-    gray,
-    chroma,
-  }
+  const gray = Math.round((data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114))
+  const chroma = Math.max(data[i], data[i+1], data[i+2]) - Math.min(data[i], data[i+1], data[i+2])
+  return { gray, chroma }
 }
 
 function createMaskClassifier(kind) {
-  if (kind === 'pill') {
-    return ({ gray, chroma }) => (
-      gray >= 168 &&
-      gray <= 255 &&
-      chroma <= 80
-    )
+  if (kind === 'light-box') {
+    // Busca áreas blancas/grises claras (ej. cajitas de FWC 2)
+    return ({ gray, chroma }) => gray >= 160 && chroma <= 60
   }
-
-  if (kind === 'sticker-body') {
-    return ({ gray, chroma }) => (
-      gray >= 118 &&
-      gray <= 255 &&
-      chroma <= 92
-    )
+  if (kind === 'dark-box') {
+    // Busca áreas grises oscuras (ej. cajita de ARG 17)
+    return ({ gray, chroma }) => gray >= 45 && gray <= 145 && chroma <= 50
   }
-
-  if (kind === 'dark-panel') {
-    return ({ gray, chroma }) => (
-      gray >= 58 &&
-      gray <= 178 &&
-      chroma <= 65
-    )
-  }
-
-  return ({ gray, chroma }) => (
-    gray >= 42 &&
-    gray <= 162 &&
-    chroma <= 72
-  )
+  return () => false
 }
 
-function componentToSmallLabelCandidate(bitmap, component, scale, kind, imageArea) {
+function componentToBoxCandidate(bitmap, component, scale, kind, imageArea) {
   const boxW = component.maxX - component.minX + 1
   const boxH = component.maxY - component.minY + 1
   const area = boxW * boxH
+  
+  // CRÍTICO: Una "cajita" real es un bloque sólido de color, no letras o bordes.
   const fillRatio = component.count / Math.max(1, area)
   const ratio = boxW / Math.max(1, boxH)
 
@@ -585,28 +338,17 @@ function componentToSmallLabelCandidate(bitmap, component, scale, kind, imageAre
   const originalW = Math.floor(boxW / scale)
   const originalH = Math.floor(boxH / scale)
 
-  if (originalW < 24 || originalH < 8) return null
-  if (originalW > bitmap.width * 0.34) return null
-  if (originalH > bitmap.height * 0.11) return null
-
-  if (ratio < 1.35 || ratio > 13) return null
-  if (fillRatio < 0.14) return null
+  // Filtramos por proporciones de una etiqueta típica de estampa
+  if (ratio < 1.8 || ratio > 4.8) return null
+  if (fillRatio < 0.55) return null // Debe ser al menos 55% sólido
 
   const originalArea = originalW * originalH
   const imageAreaRatio = originalArea / Math.max(1, imageArea)
 
-  if (imageAreaRatio < 0.00013 || imageAreaRatio > 0.035) return null
+  // Evitamos capturar componentes enanos o media pantalla
+  if (imageAreaRatio < 0.0005 || imageAreaRatio > 0.08) return null
 
-  let score = 100
-
-  score -= Math.abs(ratio - 3.9) * 4
-  score += Math.min(18, fillRatio * 18)
-
-  if (kind === 'pill') score += 18
-  if (kind === 'dark-label') score += 20
-
-  if (originalH >= 10 && originalH <= 55) score += 16
-  if (originalW >= 34 && originalW <= 210) score += 16
+  let score = 200 + (fillRatio * 100) // Premiamos los bloques más sólidos
 
   const baseZone = {
     x: originalX,
@@ -615,153 +357,25 @@ function componentToSmallLabelCandidate(bitmap, component, scale, kind, imageAre
     height: originalH,
   }
 
-  const expanded = kind === 'pill'
-    ? expandZone(bitmap, baseZone, 0.08, 0.14)
-    : expandZone(bitmap, baseZone, 0.10, 0.16)
-
   return {
-    ...expanded,
+    ...expandZone(bitmap, baseZone, 0.15, 0.25), // Expandimos suficiente para no cortar texto
     kind,
     score,
   }
 }
 
-function componentToDarkPanelTopCandidate(bitmap, component, scale, imageArea) {
-  const boxW = component.maxX - component.minX + 1
-  const boxH = component.maxY - component.minY + 1
-  const area = boxW * boxH
-  const fillRatio = component.count / Math.max(1, area)
-  const ratio = boxW / Math.max(1, boxH)
-
-  const originalX = Math.floor(component.minX / scale)
-  const originalY = Math.floor(component.minY / scale)
-  const originalW = Math.floor(boxW / scale)
-  const originalH = Math.floor(boxH / scale)
-
-  const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
-
-  if (originalW < bitmap.width * 0.10) return null
-  if (originalW > bitmap.width * 0.58) return null
-  if (originalH < bitmap.height * 0.10) return null
-  if (originalH > bitmap.height * 0.70) return null
-  if (ratio < 0.22 || ratio > 2.2) return null
-  if (fillRatio < 0.24) return null
-  if (imageAreaRatio < 0.010 || imageAreaRatio > 0.30) return null
-
-  const codeZone = {
-    x: Math.floor(originalX + originalW * 0.06),
-    y: Math.floor(originalY + originalH * 0.020),
-    width: Math.floor(originalW * 0.88),
-    height: Math.floor(originalH * 0.165),
-  }
-
-  const expanded = expandZone(bitmap, codeZone, 0.04, 0.10)
-
-  return {
-    ...expanded,
-    kind: 'pill',
-    score: 220,
-  }
-}
-
-function componentToStickerBodyCodeCandidates(bitmap, component, scale, imageArea) {
-  const boxW = component.maxX - component.minX + 1
-  const boxH = component.maxY - component.minY + 1
-  const area = boxW * boxH
-  const fillRatio = component.count / Math.max(1, area)
-
-  const originalX = Math.floor(component.minX / scale)
-  const originalY = Math.floor(component.minY / scale)
-  const originalW = Math.floor(boxW / scale)
-  const originalH = Math.floor(boxH / scale)
-
-  const ratio = originalW / Math.max(1, originalH)
-  const imageAreaRatio = (originalW * originalH) / Math.max(1, imageArea)
-
-  if (originalW < bitmap.width * 0.18) return []
-  if (originalH < bitmap.height * 0.12) return []
-  if (originalW > bitmap.width * 0.95) return []
-  if (originalH > bitmap.height * 0.95) return []
-  if (ratio < 0.45 || ratio > 2.8) return []
-  if (fillRatio < 0.22) return []
-  if (imageAreaRatio < 0.035 || imageAreaRatio > 0.65) return []
-
-  const sticker = {
-    x: originalX,
-    y: originalY,
-    width: originalW,
-    height: originalH,
-  }
-
-  const candidates = []
-
-  // Arriba derecha para stickers horizontales y verticales: ARG17, PAR1, FWC2.
-  candidates.push({
-    ...expandZone(bitmap, {
-      x: Math.floor(sticker.x + sticker.width * 0.58),
-      y: Math.floor(sticker.y + sticker.height * 0.035),
-      width: Math.floor(sticker.width * 0.36),
-      height: Math.floor(sticker.height * 0.105),
-    }, 0.04, 0.12),
-    kind: 'dark-label',
-    score: 270,
-  })
-
-  candidates.push({
-    ...expandZone(bitmap, {
-      x: Math.floor(sticker.x + sticker.width * 0.54),
-      y: Math.floor(sticker.y + sticker.height * 0.020),
-      width: Math.floor(sticker.width * 0.42),
-      height: Math.floor(sticker.height * 0.140),
-    }, 0.04, 0.10),
-    kind: 'dark-label',
-    score: 250,
-  })
-
-  candidates.push({
-    ...expandZone(bitmap, {
-      x: Math.floor(sticker.x + sticker.width * 0.58),
-      y: Math.floor(sticker.y + sticker.height * 0.035),
-      width: Math.floor(sticker.width * 0.36),
-      height: Math.floor(sticker.height * 0.105),
-    }, 0.04, 0.12),
-    kind: 'pill',
-    score: 245,
-  })
-
-  // Por si el código está en una cápsula blanca más pequeña.
-  candidates.push({
-    ...expandZone(bitmap, {
-      x: Math.floor(sticker.x + sticker.width * 0.62),
-      y: Math.floor(sticker.y + sticker.height * 0.040),
-      width: Math.floor(sticker.width * 0.29),
-      height: Math.floor(sticker.height * 0.090),
-    }, 0.05, 0.16),
-    kind: 'pill',
-    score: 240,
-  })
-
-  return candidates.filter(candidate => isReadableZone(bitmap, candidate))
-}
-
-function detectComponents(bitmap, kind) {
-  const maxW = 760
-  const scale = Math.min(1, maxW / bitmap.width)
-
+function detectComponents(bitmap, kind, scale) {
   const w = Math.max(1, Math.floor(bitmap.width * scale))
   const h = Math.max(1, Math.floor(bitmap.height * scale))
 
   const c = document.createElement('canvas')
   c.width = w
   c.height = h
-
   const ctx = c.getContext('2d')
   ctx.drawImage(bitmap, 0, 0, w, h)
 
-  const imageData = ctx.getImageData(0, 0, w, h)
-  const data = imageData.data
+  const data = ctx.getImageData(0, 0, w, h).data
   const visited = new Uint8Array(w * h)
-
   const isTargetPixel = createMaskClassifier(kind)
   const candidates = []
   const imageArea = bitmap.width * bitmap.height
@@ -769,12 +383,9 @@ function detectComponents(bitmap, kind) {
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
       const start = y * w + x
-
       if (visited[start]) continue
 
-      const info = getPixelInfo(data, start)
-
-      if (!isTargetPixel(info)) {
+      if (!isTargetPixel(getPixelInfo(data, start))) {
         visited[start] = 1
         continue
       }
@@ -782,17 +393,12 @@ function detectComponents(bitmap, kind) {
       const stack = [start]
       visited[start] = 1
 
-      let minX = x
-      let maxX = x
-      let minY = y
-      let maxY = y
-      let count = 0
+      let minX = x, maxX = x, minY = y, maxY = y, count = 0
 
       while (stack.length) {
         const current = stack.pop()
         const cx = current % w
         const cy = Math.floor(current / w)
-
         count += 1
 
         minX = Math.min(minX, cx)
@@ -800,228 +406,82 @@ function detectComponents(bitmap, kind) {
         minY = Math.min(minY, cy)
         maxY = Math.max(maxY, cy)
 
-        const neighbors = [
-          current - 1,
-          current + 1,
-          current - w,
-          current + w,
-        ]
-
+        const neighbors = [current - 1, current + 1, current - w, current + w]
         neighbors.forEach(next => {
           if (next < 0 || next >= visited.length) return
+          const nx = next % w, ny = Math.floor(next / w)
+          if (Math.abs(nx - cx) + Math.abs(ny - cy) !== 1 || visited[next]) return
 
-          const nx = next % w
-          const ny = Math.floor(next / w)
-
-          if (Math.abs(nx - cx) + Math.abs(ny - cy) !== 1) return
-          if (visited[next]) return
-
-          const nextInfo = getPixelInfo(data, next)
-
-          if (!isTargetPixel(nextInfo)) {
+          if (!isTargetPixel(getPixelInfo(data, next))) {
             visited[next] = 1
             return
           }
-
           visited[next] = 1
           stack.push(next)
         })
       }
 
-      const component = {
-        minX,
-        maxX,
-        minY,
-        maxY,
-        count,
-      }
-
-      if (kind === 'pill') {
-        const candidate = componentToSmallLabelCandidate(bitmap, component, scale, 'pill', imageArea)
-
-        if (candidate && isReadableZone(bitmap, candidate)) {
-          candidates.push(candidate)
-        }
-      }
-
-      if (kind === 'dark-label') {
-        const candidate = componentToSmallLabelCandidate(bitmap, component, scale, 'dark-label', imageArea)
-
-        if (candidate && isReadableZone(bitmap, candidate)) {
-          candidates.push(candidate)
-        }
-      }
-
-      if (kind === 'dark-panel') {
-        const candidate = componentToDarkPanelTopCandidate(bitmap, component, scale, imageArea)
-
-        if (candidate && isReadableZone(bitmap, candidate)) {
-          candidates.push(candidate)
-        }
-      }
-
-      if (kind === 'sticker-body') {
-        const bodyCandidates = componentToStickerBodyCodeCandidates(bitmap, component, scale, imageArea)
-
-        bodyCandidates.forEach(candidate => {
-          if (candidate && isReadableZone(bitmap, candidate)) {
-            candidates.push(candidate)
-          }
-        })
+      const candidate = componentToBoxCandidate(bitmap, { minX, maxX, minY, maxY, count }, scale, kind, imageArea)
+      if (candidate && isReadableZone(bitmap, candidate)) {
+        candidates.push(candidate)
       }
     }
   }
-
   return candidates
 }
 
-function addBackupRegions(bitmap) {
-  const { width, height } = bitmap
-
-  return [
-    // FWC2 foto horizontal: cajita blanca arriba derecha.
-    {
-      x: Math.floor(width * 0.615),
-      y: Math.floor(height * 0.315),
-      width: Math.floor(width * 0.255),
-      height: Math.floor(height * 0.065),
-      kind: 'pill',
-      score: 260,
-    },
-    {
-      x: Math.floor(width * 0.595),
-      y: Math.floor(height * 0.300),
-      width: Math.floor(width * 0.315),
-      height: Math.floor(height * 0.095),
-      kind: 'pill',
-      score: 245,
-    },
-
-    // ARG17 foto vertical: etiqueta gris arriba derecha.
-    {
-      x: Math.floor(width * 0.590),
-      y: Math.floor(height * 0.125),
-      width: Math.floor(width * 0.255),
-      height: Math.floor(height * 0.085),
-      kind: 'dark-label',
-      score: 275,
-    },
-    {
-      x: Math.floor(width * 0.555),
-      y: Math.floor(height * 0.110),
-      width: Math.floor(width * 0.330),
-      height: Math.floor(height * 0.115),
-      kind: 'dark-label',
-      score: 255,
-    },
-
-    // Respaldo superior derecho general.
-    {
-      x: Math.floor(width * 0.520),
-      y: Math.floor(height * 0.080),
-      width: Math.floor(width * 0.400),
-      height: Math.floor(height * 0.170),
-      kind: 'dark-label',
-      score: 180,
-    },
-  ].filter(region => isReadableZone(bitmap, region))
-}
-
 function detectCodeLabelCandidates(bitmap) {
-  const backupCandidates = addBackupRegions(bitmap)
+  const scale = Math.min(1, 800 / Math.max(bitmap.width, bitmap.height))
 
-  const stickerBodyCandidates = detectComponents(bitmap, 'sticker-body')
-  const darkPanelCandidates = detectComponents(bitmap, 'dark-panel')
-  const pillCandidates = detectComponents(bitmap, 'pill')
-  const darkLabelCandidates = detectComponents(bitmap, 'dark-label')
+  const lightBoxCandidates = detectComponents(bitmap, 'light-box', scale)
+  const darkBoxCandidates = detectComponents(bitmap, 'dark-box', scale)
 
-  const candidates = uniqueZones([
-    ...backupCandidates,
-    ...stickerBodyCandidates,
-    ...darkPanelCandidates,
-    ...pillCandidates,
-    ...darkLabelCandidates,
-  ])
+  const candidates = uniqueZones([...lightBoxCandidates, ...darkBoxCandidates])
     .filter(candidate => isReadableZone(bitmap, candidate))
 
-  const cleaned = removeOverlappingRegions(candidates)
-
-  return cleaned
+  return removeOverlappingRegions(candidates)
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_OCR_CANDIDATES)
 }
 
 function dedupeReadings(readings) {
   const seenValid = new Set()
-  const result = []
-
-  readings.forEach(reading => {
+  return readings.filter(reading => {
     const rawText = normalizeStickerCode(reading.rawText)
-
     if (/^[A-Z]{3}\d{1,3}$/.test(rawText)) {
-      if (seenValid.has(rawText)) return
-
+      if (seenValid.has(rawText)) return false
       seenValid.add(rawText)
-
-      result.push({
-        ...reading,
-        rawText,
-      })
-
-      return
+      reading.rawText = rawText
     }
-
-    result.push(reading)
+    return true
   })
-
-  return result
 }
 
 function pickBestCandidateReadings(readings) {
   const grouped = new Map()
-
   readings.forEach(reading => {
     const code = normalizeStickerCode(reading.rawText)
-
     if (!/^[A-Z]{3}\d{1,3}$/.test(code)) return
 
+    const score = Number(reading.confidence || 0) + Number(reading.candidateScore || 0) + Number(reading.repeatedScore || 0)
     const current = grouped.get(code)
-
-    const score = (
-      Number(reading.confidence || 0) +
-      Number(reading.candidateScore || 0) +
-      Number(reading.repeatedScore || 0)
-    )
-
     if (!current || score > current.score) {
-      grouped.set(code, {
-        score,
-        reading: {
-          ...reading,
-          rawText: code,
-        },
-      })
+      grouped.set(code, { score, reading: { ...reading, rawText: code } })
     }
   })
-
-  return Array.from(grouped.values())
-    .sort((a, b) => b.score - a.score)
-    .map(item => item.reading)
+  return Array.from(grouped.values()).sort((a, b) => b.score - a.score).map(item => item.reading)
 }
 
 async function recognizeCandidate(recognize, bitmap, candidate, candidateIndex, validStickerData, startedAt) {
-  const modes = candidate.kind === 'dark-label'
+  // Ajustamos los modos basados estrictamente en si la cajita es clara u oscura
+  const modes = candidate.kind === 'dark-box'
     ? [
-        { mode: 'dark-label', pageSegMode: 7 },
-        { mode: 'dark-label', pageSegMode: 8 },
-        { mode: 'dark-label-soft', pageSegMode: 7 },
+        { mode: 'dark-box-invert', pageSegMode: 7 }, // Ideal para ARG 17
         { mode: 'contrast', pageSegMode: 7 },
         { mode: 'original', pageSegMode: 7 },
       ]
     : [
-        { mode: 'pill', pageSegMode: 7 },
-        { mode: 'pill', pageSegMode: 8 },
-        { mode: 'pill-soft', pageSegMode: 7 },
+        { mode: 'light-box-contrast', pageSegMode: 7 }, // Ideal para FWC 2
         { mode: 'contrast', pageSegMode: 7 },
         { mode: 'original', pageSegMode: 7 },
       ]
@@ -1033,28 +493,15 @@ async function recognizeCandidate(recognize, bitmap, candidate, candidateIndex, 
     if (Date.now() - startedAt > OCR_TIME_LIMIT_MS) break
 
     const attempt = modes[i]
-
-    // eslint-disable-next-line no-await-in-loop
-    const result = await runOcrAttempt(
-      recognize,
-      bitmap,
-      candidate,
-      attempt.mode,
-      attempt.pageSegMode
-    )
+    const result = await runOcrAttempt(recognize, bitmap, candidate, attempt.mode, attempt.pageSegMode)
 
     if (DEBUG_OCR) {
-      console.log(
-        `OCR candidato ${candidateIndex} ${candidate.kind} modo ${attempt.mode} psm ${attempt.pageSegMode}:`,
-        result.text.replace(/\n+/g, ' ')
-      )
+      console.log(`OCR candidato ${candidateIndex} ${candidate.kind} modo ${attempt.mode}:`, result.text.replace(/\n+/g, ' '))
     }
 
     const extractedCodes = extractValidCodesFromText(result.text, validStickerData)
-
     extractedCodes.forEach(code => {
       localHits.set(code, (localHits.get(code) || 0) + 1)
-
       readings.push({
         id: `candidate-${candidateIndex}-${i}-${code}`,
         confidence: Number(result.confidence || 0),
@@ -1067,7 +514,6 @@ async function recognizeCandidate(recognize, bitmap, candidate, candidateIndex, 
       })
     })
   }
-
   return readings
 }
 
@@ -1078,41 +524,21 @@ export async function analyzeStickerCodesFromImage(recognize, bitmap, stickers) 
   const candidates = detectCodeLabelCandidates(bitmap)
 
   if (DEBUG_OCR) {
-    console.log('OCR validCodes:', Array.from(validStickerData.validCodes))
-    console.log('OCR validPrefixes:', validStickerData.validPrefixes)
-    console.log('OCR hasCatalog:', validStickerData.hasCatalog)
-    console.log('OCR candidates:', candidates)
+    console.log('OCR candidates detectados (Cajitas):', candidates)
   }
 
   const allReadings = []
 
   for (let i = 0; i < candidates.length; i += 1) {
     if (Date.now() - startedAt > OCR_TIME_LIMIT_MS) break
-
-    // eslint-disable-next-line no-await-in-loop
-    const candidateReadings = await recognizeCandidate(
-      recognize,
-      bitmap,
-      candidates[i],
-      i,
-      validStickerData,
-      startedAt
-    )
-
+    const candidateReadings = await recognizeCandidate(recognize, bitmap, candidates[i], i, validStickerData, startedAt)
     allReadings.push(...candidateReadings)
   }
 
-  const bestReadings = pickBestCandidateReadings(
-    dedupeReadings(allReadings)
-  )
+  const bestReadings = pickBestCandidateReadings(dedupeReadings(allReadings))
 
   return {
     grouped: classifyZoneReadings(bestReadings, stickers),
-    regions: candidates.map(candidate => ({
-      x: candidate.x,
-      y: candidate.y,
-      width: candidate.width,
-      height: candidate.height,
-    })),
+    regions: candidates.map(c => ({ x: c.x, y: c.y, width: c.width, height: c.height })),
   }
 }

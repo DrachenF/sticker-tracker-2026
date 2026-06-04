@@ -95,7 +95,25 @@ function SelectableStickerGrid({ title, helper, codes, selectedCodes, stickersBy
   )
 }
 
-function ManualAccordionList({ title, helper, sections, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
+function ManualCodeButton({ sticker, selectedCodes, collection, context, onToggle }) {
+  const canonicalCode = appCodeToCanonicalId(sticker.code)
+  const isSelected = selectedCodes.has(canonicalCode)
+  const duplicateCount = collection[sticker.code]?.duplicates ?? 0
+
+  return (
+    <button
+      type="button"
+      className={`manual-code-chip ${isSelected ? 'is-selected' : ''} ${context === 'duplicates' ? 'is-duplicate' : 'is-missing'}`}
+      onClick={() => onToggle(canonicalCode)}
+      aria-pressed={isSelected}
+    >
+      <span>{canonicalCode}</span>
+      {context === 'duplicates' ? <em>x{duplicateCount}</em> : null}
+    </button>
+  )
+}
+
+function ManualAccordionList({ title, helper, sections, selectedCodes, collection, context, onToggle }) {
   return (
     <section className="exchange-column manual-exchange-list">
       <header className="exchange-column-header">
@@ -114,21 +132,17 @@ function ManualAccordionList({ title, helper, sections, selectedCodes, stickersB
               <strong>{section.title}</strong>
               <em>{section.stickers.length}</em>
             </summary>
-            <div className="exchange-sticker-grid">
-              {section.stickers.map((sticker) => {
-                const canonicalCode = appCodeToCanonicalId(sticker.code)
-                return (
-                  <SelectableSticker
-                    key={canonicalCode}
-                    canonicalCode={canonicalCode}
-                    selectedCodes={selectedCodes}
-                    stickersByCanonicalCode={stickersByCanonicalCode}
-                    collection={collection}
-                    context={context}
-                    onToggle={onToggle}
-                  />
-                )
-              })}
+            <div className="manual-code-chip-grid">
+              {section.stickers.map((sticker) => (
+                <ManualCodeButton
+                  key={sticker.code}
+                  sticker={sticker}
+                  selectedCodes={selectedCodes}
+                  collection={collection}
+                  context={context}
+                  onToggle={onToggle}
+                />
+              ))}
             </div>
           </details>
         ))}
@@ -166,6 +180,25 @@ function ReviewSelectedCards({ title, helper, codes, selectedCodes, stickersByCa
   )
 }
 
+function ExchangeHistory({ entries }) {
+  return (
+    <section className="camera-result-block exchange-history-card">
+      <p className="camera-kicker">Historial</p>
+      <h2>Últimos 5 intercambios</h2>
+      <div className="exchange-history-list">
+        {entries.map((entry) => (
+          <article key={entry.id || `${entry.origin}-${entry.createdAt}`} className="exchange-history-item">
+            <strong>{entry.origin === 'intercambio_manual' ? 'Manual' : entry.origin === 'obtenidas_por_otro_metodo' ? 'Otro método' : 'QR'}</strong>
+            <p>Di: {entry.gave?.length ? entry.gave.join(', ') : 'nada'}</p>
+            <p>Recibí: {entry.received?.length ? entry.received.join(', ') : 'nada'}</p>
+          </article>
+        ))}
+        {!entries.length ? <p className="camera-empty">Todavía no hay intercambios aplicados.</p> : null}
+      </div>
+    </section>
+  )
+}
+
 function ReviewExchange({
   mode,
   selectedReceive,
@@ -184,6 +217,9 @@ function ReviewExchange({
   const receiveCodes = Array.from(selectedReceive)
   const giveCodes = Array.from(selectedGive)
   const isManual = mode === 'manual'
+  const confirmLabel = selectedGive.size > 0 && selectedReceive.size === 0
+    ? 'Dar seleccionadas'
+    : isManual ? 'Intercambiar' : 'Intercambiar seleccionadas'
 
   return (
     <section className="camera-result-block exchange-confirm-card">
@@ -215,7 +251,7 @@ function ReviewExchange({
         />
       </div>
       <div className="camera-actions">
-        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{isManual ? 'Intercambiar' : 'Intercambiar seleccionadas'}</button>
+        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
         {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
         {!isManual ? <button type="button" className="secondary-button" onClick={onMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button> : null}
         <button type="button" className="secondary-button" onClick={onUndo} disabled={!canUndo}>Deshacer último intercambio</button>
@@ -233,6 +269,7 @@ export default function CameraAddPage({
   onMarkQrObtainedElsewhere,
   onUndoQrExchange,
   canUndoQrExchange,
+  exchangeHistory,
 }) {
   const fileInputRef = useRef(null)
   const videoRef = useRef(null)
@@ -259,6 +296,20 @@ export default function CameraAddPage({
   }, [stickers])
 
   const mySets = useMemo(() => buildMyExchangeSets(stickers, collection), [stickers, collection])
+
+  const comparedExchange = useMemo(() => {
+    if (!decodedExchange) {
+      return null
+    }
+
+    const comparison = compareExchange({
+      ...mySets,
+      theirMissing: decodedExchange.theirMissing,
+      theirDuplicates: decodedExchange.theirDuplicates,
+    })
+
+    return { ...decodedExchange, ...comparison }
+  }, [decodedExchange, mySets])
 
   const manualSections = useMemo(() => {
     const sections = buildSections(stickers, teams)
@@ -302,13 +353,7 @@ export default function CameraAddPage({
 
     try {
       const decoded = await decodeExchangeText(rawText)
-      const comparison = compareExchange({
-        ...mySets,
-        theirMissing: decoded.theirMissing,
-        theirDuplicates: decoded.theirDuplicates,
-      })
-
-      setDecodedExchange({ ...decoded, ...comparison })
+setDecodedExchange(decoded)
       setSelectedReceive(new Set())
       setSelectedGive(new Set())
       stopCamera()
@@ -515,24 +560,24 @@ export default function CameraAddPage({
             </section>
           ) : null}
 
-          {decodedExchange ? (
+          {comparedExchange ? (
             <>
               <section className="camera-result-block exchange-summary-card">
                 <p className="camera-kicker">Código leído</p>
                 <div className="exchange-summary-grid">
-                  <span>Faltantes detectados: <strong>{decodedExchange.theirMissing.length}</strong></span>
-                  <span>Repetidas detectadas: <strong>{decodedExchange.theirDuplicates.length}</strong></span>
-                  <span>Bytes por bloque: <strong>{decodedExchange.blockBytes.missing}/{decodedExchange.blockBytes.duplicates}</strong></span>
-                  <span>{decodedExchange.hasCocaCola ? 'Incluye espacio Coca-Cola' : 'Álbum base'}</span>
+                  <span>Faltantes detectados: <strong>{comparedExchange.theirMissing.length}</strong></span>
+                  <span>Repetidas detectadas: <strong>{comparedExchange.theirDuplicates.length}</strong></span>
+                  <span>Bytes por bloque: <strong>{comparedExchange.blockBytes.missing}/{comparedExchange.blockBytes.duplicates}</strong></span>
+                  <span>{comparedExchange.hasCocaCola ? 'Incluye espacio Coca-Cola' : 'Álbum base'}</span>
                 </div>
-                {decodedExchange.unknownIds.length ? <p className="camera-warning">Se detectaron códigos futuros o desconocidos: {decodedExchange.unknownIds.join(', ')}.</p> : null}
+                {comparedExchange.unknownIds.length ? <p className="camera-warning">Se detectaron códigos futuros o desconocidos: {comparedExchange.unknownIds.join(', ')}.</p> : null}
               </section>
 
               <div className={`exchange-columns ${lastApplied?.mode === 'qr' ? 'is-exchange-applied' : ''}`}>
                 <SelectableStickerGrid
                   title="Te puede dar"
                   helper="Repetidas de esa persona que están en tus faltantes. Selecciona solo las que recibirás."
-                  codes={decodedExchange.theyCanGiveMe}
+                  codes={comparedExchange.theyCanGiveMe}
                   selectedCodes={selectedReceive}
                   stickersByCanonicalCode={stickersByCanonicalCode}
                   collection={collection}
@@ -542,7 +587,7 @@ export default function CameraAddPage({
                 <SelectableStickerGrid
                   title="Le puedes dar"
                   helper="Tus repetidas que están en sus faltantes. Selecciona solo las que entregarás."
-                  codes={decodedExchange.iCanGiveThem}
+                  codes={comparedExchange.iCanGiveThem}
                   selectedCodes={selectedGive}
                   stickersByCanonicalCode={stickersByCanonicalCode}
                   collection={collection}
@@ -586,7 +631,6 @@ export default function CameraAddPage({
                 helper="Estas son las figuritas que yo puedo darle a la otra persona. Seleccionarlas no cambia tu inventario todavía."
                 sections={manualSections.give}
                 selectedCodes={selectedGive}
-                stickersByCanonicalCode={stickersByCanonicalCode}
                 collection={collection}
                 context="duplicates"
                 onToggle={(code) => toggleSetCode(setSelectedGive, code)}
@@ -596,7 +640,6 @@ export default function CameraAddPage({
                 helper="Estas son las figuritas que la otra persona puede darme. Seleccionarlas no las marca como conseguidas todavía."
                 sections={manualSections.receive}
                 selectedCodes={selectedReceive}
-                stickersByCanonicalCode={stickersByCanonicalCode}
                 collection={collection}
                 context="missing"
                 onToggle={(code) => toggleSetCode(setSelectedReceive, code)}
@@ -619,6 +662,8 @@ export default function CameraAddPage({
           />
         </>
       )}
+
+      <ExchangeHistory entries={exchangeHistory || []} />
     </section>
   )
 }

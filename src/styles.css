@@ -4307,6 +4307,88 @@ a {
   font-weight: 800;
 }
 
+.manual-code-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 8px 10px;
+}
+
+.manual-code-chip {
+  min-width: 54px;
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #fff;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.manual-code-chip em {
+  border-radius: 999px;
+  padding: 2px 5px;
+  background: #fed7aa;
+  color: #9a3412;
+  font-size: 0.66rem;
+  font-style: normal;
+}
+
+.manual-code-chip.is-missing {
+  border-color: rgba(239, 68, 68, 0.26);
+}
+
+.manual-code-chip.is-duplicate {
+  border-color: rgba(249, 115, 22, 0.28);
+}
+
+.manual-code-chip.is-selected {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.18);
+}
+
+.manual-code-chip.is-selected em {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.exchange-history-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.exchange-history-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.exchange-history-item {
+  border: 1px solid #edf2fa;
+  border-radius: 14px;
+  padding: 9px;
+  background: #f8fafc;
+}
+
+.exchange-history-item strong {
+  color: #1d4ed8;
+  font-size: 0.84rem;
+}
+
+.exchange-history-item p {
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
 .manual-section-accordion .exchange-sticker-grid {
   padding: 0 8px 10px;
 }

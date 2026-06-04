@@ -515,7 +515,7 @@ function App() {
       const raw = localStorage.getItem(ACTION_HISTORY_KEY)
       const parsed = raw ? JSON.parse(raw) : null
       if (!parsed || typeof parsed !== 'object') return {
-        addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [],
+        addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [], exchanges: [],
       }
       return {
         addedOwned: Array.isArray(parsed.addedOwned) ? parsed.addedOwned.slice(0, HISTORY_MAX) : [],
@@ -524,9 +524,10 @@ function App() {
         removedDuplicates: Array.isArray(parsed.removedDuplicates) ? parsed.removedDuplicates.slice(0, HISTORY_MAX) : [],
         missingAdded: Array.isArray(parsed.missingAdded) ? parsed.missingAdded.slice(0, HISTORY_MAX) : [],
         missingResolved: Array.isArray(parsed.missingResolved) ? parsed.missingResolved.slice(0, HISTORY_MAX) : [],
+        exchanges: Array.isArray(parsed.exchanges) ? parsed.exchanges.slice(0, 5) : [],
       }
     } catch {
-      return { addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [] }
+      return { addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [], exchanges: [] }
     }
   })
   const [undoPast, setUndoPast] = useState([])
@@ -983,6 +984,18 @@ function App() {
 
   const applyExchangeCollectionChanges = (receiveCodes, giveCodes, exchangeOrigin) => {
     const previousCollection = collection
+    const historyEntry = {
+      id: `${exchangeOrigin}-${Date.now()}`,
+      origin: exchangeOrigin,
+      received: receiveCodes,
+      gave: giveCodes,
+      createdAt: Date.now(),
+    }
+
+    setActionHistory((current) => ({
+      ...current,
+      exchanges: [historyEntry, ...(current.exchanges || [])].slice(0, 5),
+    }))
 
     setCollection((currentCollection) => {
       let nextCollection = currentCollection
@@ -1115,7 +1128,7 @@ function App() {
 
     resetCollectionState()
     setCollection({})
-    setActionHistory({ addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [] })
+    setActionHistory({ addedOwned: [], removedOwned: [], addedDuplicates: [], removedDuplicates: [], missingAdded: [], missingResolved: [], exchanges: [] })
     setToast({ text: 'Colección reiniciada.' })
   }
 
@@ -1245,6 +1258,7 @@ function App() {
             onMarkQrObtainedElsewhere={handleMarkQrObtainedElsewhere}
             onUndoQrExchange={handleUndoQrExchange}
             canUndoQrExchange={Boolean(lastQrExchangeSnapshot)}
+            exchangeHistory={actionHistory.exchanges || []}
           />
         )
       case 'album':

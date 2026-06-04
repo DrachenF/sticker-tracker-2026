@@ -14,6 +14,7 @@ import {
   saveCollectionState,
 } from './storage/localCollection'
 import { buildCollectionStats } from './utils/collectionStats'
+import { canonicalIdToAppCode } from './utils/qrExchangeCodec'
 import { playStickerSound } from './utils/sounds'
 import './styles.css'
 
@@ -57,11 +58,11 @@ const tabs = [
   { id: 'album', label: 'Mi álbum' },
   { id: 'missing', label: 'Faltantes' },
   { id: 'duplicates', label: 'Repetidas' },
-  { id: 'camera', label: 'Cámara' },
+  { id: 'camera', label: 'QR' },
   { id: 'settings', label: 'Ajustes' },
 ]
 
-const navTabs = tabs.filter((tab) => tab.id !== 'camera')
+const navTabs = tabs
 
 const infoPages = {
   '/como-usar': {
@@ -502,6 +503,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [toast, setToast] = useState(null)
+  const [lastQrExchangeSnapshot, setLastQrExchangeSnapshot] = useState(null)
   const [actionHistory, setActionHistory] = useState(() => {
     localStorage.removeItem('sticker-tracker-2026-movement-history')
     localStorage.removeItem('sticker-tracker-2026-added-history')
@@ -975,13 +977,70 @@ function App() {
 
 
 
-  const handleApplyDetectedSticker = (code) => {
-    if (collection[code]?.owned) {
-      handleIncrementDuplicates(code)
+  const applyQrCollectionChanges = (receiveCodes, giveCodes, snapshotLabel) => {
+    const previousCollection = collection
+
+    setCollection((currentCollection) => {
+      let nextCollection = currentCollection
+
+      receiveCodes.forEach((canonicalCode) => {
+        const code = canonicalIdToAppCode(canonicalCode)
+        const currentStickerState = nextCollection[code] ?? {
+          owned: false,
+          duplicates: 0,
+          pasted: false,
+        }
+
+        nextCollection = pruneCollectionEntry(nextCollection, code, {
+          ...currentStickerState,
+          owned: true,
+          origin: 'intercambio_qr',
+        })
+      })
+
+      giveCodes.forEach((canonicalCode) => {
+        const code = canonicalIdToAppCode(canonicalCode)
+        const currentStickerState = nextCollection[code]
+
+        if (!currentStickerState) {
+          return
+        }
+
+        nextCollection = pruneCollectionEntry(nextCollection, code, {
+          ...currentStickerState,
+          owned: true,
+          duplicates: Math.max(0, (currentStickerState.duplicates ?? 0) - 1),
+          lastOutput: 'intercambio_qr',
+        })
+      })
+
+      return nextCollection
+    })
+
+    setLastQrExchangeSnapshot({ collection: previousCollection, label: snapshotLabel, createdAt: Date.now() })
+  }
+
+  const handleApplyQrExchange = (receiveCodes, giveCodes) => {
+    applyQrCollectionChanges(receiveCodes, giveCodes, 'intercambio_qr')
+    playAppSound('duplicate')
+    setToast({ text: 'Intercambio aplicado correctamente.' })
+    return { message: 'Intercambio aplicado correctamente' }
+  }
+
+  const handleMarkQrObtainedElsewhere = (receiveCodes) => {
+    applyQrCollectionChanges(receiveCodes, [], 'obtenidas_por_otro_metodo')
+    playAppSound('add')
+    setToast({ text: 'Figuritas marcadas como obtenidas por otro método.' })
+  }
+
+  const handleUndoQrExchange = () => {
+    if (!lastQrExchangeSnapshot) {
       return
     }
 
-    handleToggleOwned(code)
+    setCollection(lastQrExchangeSnapshot.collection)
+    setLastQrExchangeSnapshot(null)
+    setToast({ text: 'Se deshizo el último intercambio.' })
   }
 
   const handleCopyText = async (text, successMessage) => {
@@ -1165,7 +1224,16 @@ function App() {
 
     switch (activeTab) {
       case 'camera':
-        return <CameraAddPage stickers={stickers} onApplyDetectedSticker={handleApplyDetectedSticker} />
+        return (
+          <CameraAddPage
+            stickers={stickers}
+            collection={collection}
+            onApplyQrExchange={handleApplyQrExchange}
+            onMarkQrObtainedElsewhere={handleMarkQrObtainedElsewhere}
+            onUndoQrExchange={handleUndoQrExchange}
+            canUndoQrExchange={Boolean(lastQrExchangeSnapshot)}
+          />
+        )
       case 'album':
         return <AlbumPage {...pageProps} />
       case 'missing':

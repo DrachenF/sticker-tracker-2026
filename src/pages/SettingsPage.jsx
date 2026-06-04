@@ -193,8 +193,9 @@ function SettingsPage({
         <p className="settings-note settings-note-plain">
           El archivo .albu incluye estampitas, repetidas, pegadas, color del álbum
           y posición de banderas. El respaldo QR usa el mismo contenido; puedes
-          hacerle captura. No incluye Coca-Cola porque esta app no guarda esas
-          estampitas extra.
+          hacerle captura. Si lees un QR de intercambio por error, la app te avisará
+          antes de convertirlo en respaldo. No incluye Coca-Cola porque esta app no
+          guarda esas estampitas extra.
         </p>
 
         <div className="settings-actions settings-actions-large">

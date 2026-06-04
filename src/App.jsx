@@ -14,7 +14,7 @@ import {
   saveCollectionState,
 } from './storage/localCollection'
 import { buildCollectionStats } from './utils/collectionStats'
-import { canonicalIdToAppCode } from './utils/qrExchangeCodec'
+import { canonicalIdToAppCode, decodeExchangeText } from './utils/qrExchangeCodec'
 import { playStickerSound } from './utils/sounds'
 import './styles.css'
 
@@ -1114,12 +1114,49 @@ function App() {
     return exportCollectionBackup(collection, { isSoundEnabled })
   }
 
-  const handleImportBackupText = (backupText) => {
+  const buildCollectionFromExchangeBackup = (decodedExchange) => {
+    const missingCodes = new Set(decodedExchange.theirMissing.map(canonicalIdToAppCode))
+    const duplicateCodes = new Set(decodedExchange.theirDuplicates.map(canonicalIdToAppCode))
+
+    return stickers.reduce((nextCollection, sticker) => {
+      const isMissing = missingCodes.has(sticker.code)
+      const hasDuplicate = duplicateCodes.has(sticker.code)
+
+      if (!isMissing || hasDuplicate) {
+        nextCollection[sticker.code] = {
+          owned: true,
+          duplicates: hasDuplicate ? 1 : 0,
+          pasted: false,
+        }
+      }
+
+      return nextCollection
+    }, {})
+  }
+
+  const handleImportBackupText = async (backupText) => {
     try {
       return applyBackupText(backupText, 'Respaldo QR subido correctamente.')
-    } catch (importError) {
-      setToast({ text: importError.message || 'No se pudo importar el respaldo QR.' })
-      throw importError
+    } catch (backupError) {
+      try {
+        const decodedExchange = await decodeExchangeText(backupText)
+        const shouldImportExchange = window.confirm(
+          'Leímos un QR de intercambio, no un QR de respaldo. Podemos generar tu álbum tomando sus faltantes como faltantes tuyas y marcando como tenidas todas las demás. Las repetidas del QR se guardarán como x1 porque el QR de intercambio no trae cantidades. ¿Quieres guardar este respaldo en base al QR de intercambio?',
+        )
+
+        if (!shouldImportExchange) {
+          throw new Error('Importación cancelada. El QR leído era de intercambio, no de respaldo.', { cause: backupError })
+        }
+
+        const nextCollection = buildCollectionFromExchangeBackup(decodedExchange)
+        setCollection(nextCollection)
+        setToast({ text: 'Álbum generado desde QR de intercambio.' })
+        return { collection: nextCollection, isSoundEnabled: null }
+      } catch (exchangeError) {
+        const finalError = exchangeError.message?.includes('cancelada') ? exchangeError : backupError
+        setToast({ text: finalError.message || 'No se pudo importar el respaldo QR.' })
+        throw finalError
+      }
     }
   }
 

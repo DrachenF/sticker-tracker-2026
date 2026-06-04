@@ -54,10 +54,12 @@ function normalizeAddedHistoryEntry(entry) {
 }
 
 const tabs = [
-  { id: 'album', label: 'Álbum' },
-  { id: 'home', label: 'Estadísticas' },
+  { id: 'home', label: 'Inicio' },
+  { id: 'album', label: 'Mi álbum' },
+  { id: 'missing', label: 'Faltantes' },
+  { id: 'duplicates', label: 'Repetidas' },
   { id: 'camera', label: 'Intercambio' },
-  { id: 'settings', label: 'Configuración' },
+  { id: 'settings', label: 'Ajustes' },
 ]
 
 const navTabs = tabs

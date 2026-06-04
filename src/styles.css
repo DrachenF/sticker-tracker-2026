@@ -4105,6 +4105,28 @@ a {
   margin: 8px 0 0;
 }
 
+.exchange-review-columns {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.exchange-review-column {
+  border: 1px solid #edf2fa;
+  border-radius: 16px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.exchange-review-column h3 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.exchange-review-grid {
+  margin-top: 10px;
+}
+
 .exchange-code-list {
   margin-top: 10px;
   border: 1px solid #edf2fa;
@@ -4156,7 +4178,8 @@ a {
 
 @media (min-width: 641px) {
   .exchange-primary-actions,
-  .exchange-columns {
+  .exchange-columns,
+  .exchange-review-columns {
     grid-template-columns: 1fr 1fr;
   }
 

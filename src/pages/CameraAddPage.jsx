@@ -27,15 +27,6 @@ function getStickerMeta(sticker) {
   return sticker?.teamCode || sticker?.section || 'base'
 }
 
-function CodeList({ title, codes }) {
-  return (
-    <div className="exchange-code-list">
-      <strong>{title}</strong>
-      <p>{codes.length ? codes.join(', ') : 'Sin seleccionadas.'}</p>
-    </div>
-  )
-}
-
 function SelectableSticker({ canonicalCode, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
   const appCode = canonicalIdToAppCode(canonicalCode)
   const sticker = stickersByCanonicalCode[canonicalCode]
@@ -147,7 +138,48 @@ function ManualAccordionList({ title, helper, sections, selectedCodes, stickersB
   )
 }
 
-function ReviewExchange({ mode, selectedReceive, selectedGive, onConfirm, onMarkElsewhere, onUndo, canUndo, onBackToManual }) {
+function ReviewSelectedCards({ title, helper, codes, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
+  return (
+    <section className="exchange-review-column">
+      <header className="exchange-column-header">
+        <div>
+          <p className="camera-kicker">{codes.length} seleccionadas</p>
+          <h3>{title}</h3>
+        </div>
+      </header>
+      <p className="camera-empty">{helper}</p>
+      <div className="exchange-sticker-grid exchange-review-grid">
+        {codes.map((canonicalCode) => (
+          <SelectableSticker
+            key={canonicalCode}
+            canonicalCode={canonicalCode}
+            selectedCodes={selectedCodes}
+            stickersByCanonicalCode={stickersByCanonicalCode}
+            collection={collection}
+            context={context}
+            onToggle={onToggle}
+          />
+        ))}
+      </div>
+      {!codes.length ? <p className="camera-empty">Sin seleccionadas.</p> : null}
+    </section>
+  )
+}
+
+function ReviewExchange({
+  mode,
+  selectedReceive,
+  selectedGive,
+  stickersByCanonicalCode,
+  collection,
+  onConfirm,
+  onMarkElsewhere,
+  onUndo,
+  canUndo,
+  onBackToManual,
+  onToggleReceive,
+  onToggleGive,
+}) {
   const hasSelection = selectedReceive.size > 0 || selectedGive.size > 0
   const receiveCodes = Array.from(selectedReceive)
   const giveCodes = Array.from(selectedGive)
@@ -160,8 +192,28 @@ function ReviewExchange({ mode, selectedReceive, selectedGive, onConfirm, onMark
       <p>{isManual ? 'Él/Ella me puede dar' : 'Vas a recibir'}: <strong>{selectedReceive.size} figuritas</strong></p>
       <p>{isManual ? 'Yo puedo dar' : 'Vas a entregar'}: <strong>{selectedGive.size} figuritas</strong></p>
       {hasSelection && selectedReceive.size !== selectedGive.size ? <p className="camera-warning">{UNEVEN_WARNING}</p> : null}
-      <CodeList title={isManual ? 'Él/Ella me puede dar' : 'Recibes'} codes={receiveCodes} />
-      <CodeList title={isManual ? 'Yo puedo dar' : 'Entregas'} codes={giveCodes} />
+      <div className="exchange-review-columns">
+        <ReviewSelectedCards
+          title={isManual ? 'Él/Ella me puede dar' : 'Recibes'}
+          helper={isManual ? 'Estas faltantes saldrán de tus faltantes al confirmar. Toca una carta para desmarcarla.' : 'Estas cartas se marcarán como obtenidas al confirmar. Toca una carta para desmarcarla.'}
+          codes={receiveCodes}
+          selectedCodes={selectedReceive}
+          stickersByCanonicalCode={stickersByCanonicalCode}
+          collection={collection}
+          context="missing"
+          onToggle={onToggleReceive}
+        />
+        <ReviewSelectedCards
+          title={isManual ? 'Yo puedo dar' : 'Entregas'}
+          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
+          codes={giveCodes}
+          selectedCodes={selectedGive}
+          stickersByCanonicalCode={stickersByCanonicalCode}
+          collection={collection}
+          context="duplicates"
+          onToggle={onToggleGive}
+        />
+      </div>
       <div className="camera-actions">
         <button type="button" onClick={onConfirm} disabled={!hasSelection}>{isManual ? 'Intercambiar' : 'Intercambiar seleccionadas'}</button>
         {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
@@ -503,10 +555,14 @@ export default function CameraAddPage({
                 mode="qr"
                 selectedReceive={selectedReceive}
                 selectedGive={selectedGive}
+                stickersByCanonicalCode={stickersByCanonicalCode}
+                collection={collection}
                 onConfirm={handleConfirmExchange}
                 onMarkElsewhere={handleMarkElsewhere}
                 onUndo={onUndoQrExchange}
                 canUndo={canUndoQrExchange}
+                onToggleReceive={(code) => toggleSetCode(setSelectedReceive, code)}
+                onToggleGive={(code) => toggleSetCode(setSelectedGive, code)}
               />
             </>
           ) : null}
@@ -552,10 +608,14 @@ export default function CameraAddPage({
             mode="manual"
             selectedReceive={selectedReceive}
             selectedGive={selectedGive}
+            stickersByCanonicalCode={stickersByCanonicalCode}
+            collection={collection}
             onConfirm={handleConfirmExchange}
             onUndo={onUndoQrExchange}
             canUndo={canUndoQrExchange}
             onBackToManual={() => setManualStep('select')}
+            onToggleReceive={(code) => toggleSetCode(setSelectedReceive, code)}
+            onToggleGive={(code) => toggleSetCode(setSelectedGive, code)}
           />
         </>
       )}

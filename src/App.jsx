@@ -25,6 +25,7 @@ const ALBUM_FILTER_KEY = 'sticker-tracker-album-filter'
 const ACTION_HISTORY_KEY = 'sticker-tracker-2026-action-history-v2'
 const SITE_URL = 'https://mi-album-2026-guatemala.vercel.app'
 const HISTORY_MAX = 50
+const QR_BACKUP_HEADER = 'STICKER_TRACKER_QR_BACKUP_V1'
 
 function buildStickerHistoryLabel(sticker) {
   if (!sticker) {
@@ -1109,9 +1110,115 @@ function App() {
     return importedBackup
   }
 
+  const bytesToBase64 = (bytes) => {
+    let binary = ''
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte)
+    })
+    return btoa(binary)
+  }
+
+  const base64ToBytes = (text) => Uint8Array.from(
+    atob(text),
+    (character) => character.charCodeAt(0),
+  )
+
+  const setBackupBit = (bytes, index) => {
+    bytes[Math.floor(index / 8)] |= 1 << (index % 8)
+  }
+
+  const getBackupBit = (bytes, index) => (
+    (bytes[Math.floor(index / 8)] & (1 << (index % 8))) !== 0
+  )
+
+  const buildCompactBackupText = () => {
+    const stickerIndexByCode = new Map(stickers.map((sticker, index) => [sticker.code, index]))
+    const bitBytes = Math.ceil(stickers.length / 8)
+    const ownedBytes = new Uint8Array(bitBytes)
+    const pastedBytes = new Uint8Array(bitBytes)
+    const duplicateEntries = []
+
+    Object.entries(collection).forEach(([code, state]) => {
+      const index = stickerIndexByCode.get(code)
+
+      if (index === undefined) {
+        return
+      }
+
+      if (state?.owned || state?.duplicates > 0 || state?.pasted) {
+        setBackupBit(ownedBytes, index)
+      }
+
+      if (state?.pasted) {
+        setBackupBit(pastedBytes, index)
+      }
+
+      if ((state?.duplicates ?? 0) > 0) {
+        duplicateEntries.push([index, Math.min(255, Math.max(0, Number(state.duplicates) || 0))])
+      }
+    })
+
+    const bytes = new Uint8Array(5 + bitBytes * 2 + duplicateEntries.length * 3)
+    bytes[0] = 1
+    bytes[1] = stickers.length & 255
+    bytes[2] = stickers.length >> 8
+    bytes[3] = duplicateEntries.length & 255
+    bytes[4] = duplicateEntries.length >> 8
+    bytes.set(ownedBytes, 5)
+    bytes.set(pastedBytes, 5 + bitBytes)
+
+    let offset = 5 + bitBytes * 2
+    duplicateEntries.forEach(([index, count]) => {
+      bytes[offset] = index & 255
+      bytes[offset + 1] = index >> 8
+      bytes[offset + 2] = count
+      offset += 3
+    })
+
+    return `${QR_BACKUP_HEADER}.${bytesToBase64(bytes)}`
+  }
+
+  const importCompactBackupText = (backupText) => {
+    if (!backupText.startsWith(`${QR_BACKUP_HEADER}.`)) {
+      return null
+    }
+
+    const bytes = base64ToBytes(backupText.slice(QR_BACKUP_HEADER.length + 1))
+    const stickerCount = bytes[1] + (bytes[2] << 8)
+    const duplicateCount = bytes[3] + (bytes[4] << 8)
+    const bitBytes = Math.ceil(stickerCount / 8)
+    const ownedBytes = bytes.slice(5, 5 + bitBytes)
+    const pastedBytes = bytes.slice(5 + bitBytes, 5 + bitBytes * 2)
+    const duplicateCounts = new Map()
+    let offset = 5 + bitBytes * 2
+
+    for (let i = 0; i < duplicateCount; i += 1) {
+      const index = bytes[offset] + (bytes[offset + 1] << 8)
+      const count = bytes[offset + 2]
+      duplicateCounts.set(index, count)
+      offset += 3
+    }
+
+    const nextCollection = stickers.reduce((result, sticker, index) => {
+      const duplicates = duplicateCounts.get(index) ?? 0
+      const owned = getBackupBit(ownedBytes, index) || duplicates > 0
+      const pasted = owned && getBackupBit(pastedBytes, index)
+
+      if (owned || duplicates > 0 || pasted) {
+        result[sticker.code] = { owned, duplicates, pasted }
+      }
+
+      return result
+    }, {})
+
+    setCollection(nextCollection)
+    setToast({ text: 'Respaldo QR subido correctamente.' })
+    return { collection: nextCollection, isSoundEnabled: null }
+  }
+
   const handleGenerateBackupText = () => {
     setToast({ text: 'QR de respaldo generado.' })
-    return exportCollectionBackup(collection, { isSoundEnabled })
+    return buildCompactBackupText()
   }
 
   const buildCollectionFromExchangeBackup = (decodedExchange) => {
@@ -1136,6 +1243,12 @@ function App() {
 
   const handleImportBackupText = async (backupText) => {
     try {
+      const compactBackup = importCompactBackupText(backupText)
+
+      if (compactBackup) {
+        return compactBackup
+      }
+
       return applyBackupText(backupText, 'Respaldo QR subido correctamente.')
     } catch (backupError) {
       try {

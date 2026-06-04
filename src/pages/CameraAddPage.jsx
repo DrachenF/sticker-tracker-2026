@@ -27,7 +27,7 @@ function getStickerMeta(sticker) {
   return sticker?.teamCode || sticker?.section || 'base'
 }
 
-function SelectableSticker({ canonicalCode, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
+function SelectableSticker({ canonicalCode, selectedCodes, stickersByCanonicalCode, collection, context, selectionTone = '', onToggle }) {
   const appCode = canonicalIdToAppCode(canonicalCode)
   const sticker = stickersByCanonicalCode[canonicalCode]
   const isSelected = selectedCodes.has(canonicalCode)
@@ -49,7 +49,7 @@ function SelectableSticker({ canonicalCode, selectedCodes, stickersByCanonicalCo
     : { owned: false, duplicates: 0, pasted: false }
 
   return (
-    <div className={`exchange-selectable-card ${isSelected ? 'is-selected' : ''}`}>
+    <div className={`exchange-selectable-card ${selectionTone ? `is-${selectionTone}-selection` : ''} ${isSelected ? 'is-selected' : ''}`}>
       <StickerCard
         sticker={sticker}
         stickerState={state}
@@ -66,7 +66,7 @@ function SelectableSticker({ canonicalCode, selectedCodes, stickersByCanonicalCo
   )
 }
 
-function SelectableStickerGrid({ title, helper, codes, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
+function SelectableStickerGrid({ title, helper, codes, selectedCodes, stickersByCanonicalCode, collection, context, selectionTone = '', onToggle }) {
   return (
     <section className="exchange-column">
       <header className="exchange-column-header">
@@ -86,6 +86,7 @@ function SelectableStickerGrid({ title, helper, codes, selectedCodes, stickersBy
             stickersByCanonicalCode={stickersByCanonicalCode}
             collection={collection}
             context={context}
+            selectionTone={selectionTone}
             onToggle={onToggle}
           />
         ))}
@@ -152,12 +153,12 @@ function ManualAccordionList({ title, helper, sections, selectedCodes, collectio
   )
 }
 
-function ReviewSelectedCards({ title, helper, codes, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
+function ReviewSelectedCards({ title, helper, codes, selectedCodes, stickersByCanonicalCode, collection, context, selectionTone = '', onToggle }) {
   return (
     <section className="exchange-review-column">
       <header className="exchange-column-header">
         <div>
-          <p className="camera-kicker">{codes.length} seleccionadas</p>
+          <p className="camera-kicker">{selectedCodes.size} seleccionadas</p>
           <h3>{title}</h3>
         </div>
       </header>
@@ -171,11 +172,12 @@ function ReviewSelectedCards({ title, helper, codes, selectedCodes, stickersByCa
             stickersByCanonicalCode={stickersByCanonicalCode}
             collection={collection}
             context={context}
+            selectionTone={selectionTone}
             onToggle={onToggle}
           />
         ))}
       </div>
-      {!codes.length ? <p className="camera-empty">Sin seleccionadas.</p> : null}
+      {!codes.length ? <p className="camera-empty">Sin cartas para revisar.</p> : null}
     </section>
   )
 }
@@ -203,6 +205,8 @@ function ReviewExchange({
   mode,
   selectedReceive,
   selectedGive,
+  displayReceiveCodes,
+  displayGiveCodes,
   stickersByCanonicalCode,
   collection,
   onConfirm,
@@ -214,12 +218,14 @@ function ReviewExchange({
   onToggleGive,
 }) {
   const hasSelection = selectedReceive.size > 0 || selectedGive.size > 0
-  const receiveCodes = Array.from(selectedReceive)
-  const giveCodes = Array.from(selectedGive)
+  const receiveCodes = displayReceiveCodes || Array.from(selectedReceive)
+  const giveCodes = displayGiveCodes || Array.from(selectedGive)
   const isManual = mode === 'manual'
   const confirmLabel = selectedGive.size > 0 && selectedReceive.size === 0
     ? 'Dar seleccionadas'
-    : isManual ? 'Intercambiar' : 'Intercambiar seleccionadas'
+    : selectedReceive.size > 0 && selectedGive.size === 0
+      ? 'Adquirir seleccionadas'
+      : 'Intercambiar'
 
   return (
     <section className="camera-result-block exchange-confirm-card">
@@ -231,22 +237,24 @@ function ReviewExchange({
       <div className="exchange-review-columns">
         <ReviewSelectedCards
           title={isManual ? 'Él/Ella me puede dar' : 'Recibes'}
-          helper={isManual ? 'Estas faltantes saldrán de tus faltantes al confirmar. Toca una carta para desmarcarla.' : 'Estas cartas se marcarán como obtenidas al confirmar. Toca una carta para desmarcarla.'}
+          helper={isManual ? 'Estas faltantes saldrán de tus faltantes al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas cartas se marcarán como obtenidas al confirmar. Toca una carta para desmarcarla.'}
           codes={receiveCodes}
           selectedCodes={selectedReceive}
           stickersByCanonicalCode={stickersByCanonicalCode}
           collection={collection}
           context="missing"
+          selectionTone="receive"
           onToggle={onToggleReceive}
         />
         <ReviewSelectedCards
           title={isManual ? 'Yo puedo dar' : 'Entregas'}
-          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
+          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
           codes={giveCodes}
           selectedCodes={selectedGive}
           stickersByCanonicalCode={stickersByCanonicalCode}
           collection={collection}
           context="duplicates"
+          selectionTone="give"
           onToggle={onToggleGive}
         />
       </div>
@@ -283,6 +291,10 @@ export default function CameraAddPage({
   const [decodedExchange, setDecodedExchange] = useState(null)
   const [selectedReceive, setSelectedReceive] = useState(new Set())
   const [selectedGive, setSelectedGive] = useState(new Set())
+  const [manualReceiveSelection, setManualReceiveSelection] = useState(new Set())
+  const [manualGiveSelection, setManualGiveSelection] = useState(new Set())
+  const [settledQrReceive, setSettledQrReceive] = useState(new Set())
+  const [settledQrGive, setSettledQrGive] = useState(new Set())
   const [generatedText, setGeneratedText] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [exchangeMessage, setExchangeMessage] = useState('')
@@ -308,8 +320,13 @@ export default function CameraAddPage({
       theirDuplicates: decodedExchange.theirDuplicates,
     })
 
-    return { ...decodedExchange, ...comparison }
-  }, [decodedExchange, mySets])
+    return {
+      ...decodedExchange,
+      ...comparison,
+      theyCanGiveMe: comparison.theyCanGiveMe.filter((code) => !settledQrReceive.has(code)),
+      iCanGiveThem: comparison.iCanGiveThem.filter((code) => !settledQrGive.has(code)),
+    }
+  }, [decodedExchange, mySets, settledQrReceive, settledQrGive])
 
   const manualSections = useMemo(() => {
     const sections = buildSections(stickers, teams)
@@ -344,6 +361,10 @@ export default function CameraAddPage({
     setManualStep('select')
     setError('')
     setExchangeMessage('')
+    setManualReceiveSelection(new Set())
+    setManualGiveSelection(new Set())
+    setSettledQrReceive(new Set())
+    setSettledQrGive(new Set())
   }
 
   const applyDecodedText = async (rawText) => {
@@ -353,9 +374,11 @@ export default function CameraAddPage({
 
     try {
       const decoded = await decodeExchangeText(rawText)
-setDecodedExchange(decoded)
+      setDecodedExchange(decoded)
       setSelectedReceive(new Set())
       setSelectedGive(new Set())
+      setSettledQrReceive(new Set())
+      setSettledQrGive(new Set())
       stopCamera()
     } catch (decodeError) {
       setError(decodeError.message || QR_EXCHANGE_ERROR)
@@ -471,13 +494,30 @@ setDecodedExchange(decoded)
     })
   }
 
+  const toggleManualCandidate = (candidateSetter, selectionSetter, code) => {
+    candidateSetter((current) => {
+      const next = new Set(current)
+      if (next.has(code)) {
+        next.delete(code)
+        selectionSetter((selected) => {
+          const nextSelected = new Set(selected)
+          nextSelected.delete(code)
+          return nextSelected
+        })
+      } else {
+        next.add(code)
+      }
+      return next
+    })
+  }
+
   const confirmWithWarning = (receiveCodes, giveCodes) => {
     return receiveCodes.length === giveCodes.length || window.confirm(UNEVEN_WARNING)
   }
 
   const handleConfirmExchange = () => {
-    const receiveCodes = Array.from(selectedReceive)
-    const giveCodes = Array.from(selectedGive)
+    const receiveCodes = mode === 'manual' ? Array.from(manualReceiveSelection) : Array.from(selectedReceive)
+    const giveCodes = mode === 'manual' ? Array.from(manualGiveSelection) : Array.from(selectedGive)
 
     if (!receiveCodes.length && !giveCodes.length) {
       setError('Selecciona al menos una figurita para intercambiar.')
@@ -492,8 +532,17 @@ setDecodedExchange(decoded)
       ? onApplyManualExchange(receiveCodes, giveCodes)
       : onApplyQrExchange(receiveCodes, giveCodes)
     setLastApplied({ receiveCodes, giveCodes, appliedAt: Date.now(), mode })
-    setSelectedReceive(new Set())
-    setSelectedGive(new Set())
+    if (mode === 'manual') {
+      setSelectedReceive((current) => new Set([...current].filter((code) => !receiveCodes.includes(code))))
+      setSelectedGive((current) => new Set([...current].filter((code) => !giveCodes.includes(code))))
+      setManualReceiveSelection(new Set())
+      setManualGiveSelection(new Set())
+    } else {
+      setSettledQrReceive((current) => new Set([...current, ...receiveCodes]))
+      setSettledQrGive((current) => new Set([...current, ...giveCodes]))
+      setSelectedReceive(new Set())
+      setSelectedGive(new Set())
+    }
     setManualStep('select')
     setExchangeMessage(applied?.message || 'Intercambio aplicado correctamente')
     setError('')
@@ -582,6 +631,7 @@ setDecodedExchange(decoded)
                   stickersByCanonicalCode={stickersByCanonicalCode}
                   collection={collection}
                   context="missing"
+                  selectionTone="receive"
                   onToggle={(code) => toggleSetCode(setSelectedReceive, code)}
                 />
                 <SelectableStickerGrid
@@ -592,6 +642,7 @@ setDecodedExchange(decoded)
                   stickersByCanonicalCode={stickersByCanonicalCode}
                   collection={collection}
                   context="duplicates"
+                  selectionTone="give"
                   onToggle={(code) => toggleSetCode(setSelectedGive, code)}
                 />
               </div>
@@ -633,7 +684,7 @@ setDecodedExchange(decoded)
                 selectedCodes={selectedGive}
                 collection={collection}
                 context="duplicates"
-                onToggle={(code) => toggleSetCode(setSelectedGive, code)}
+                onToggle={(code) => toggleManualCandidate(setSelectedGive, setManualGiveSelection, code)}
               />
               <ManualAccordionList
                 title="Mis faltantes"
@@ -642,23 +693,25 @@ setDecodedExchange(decoded)
                 selectedCodes={selectedReceive}
                 collection={collection}
                 context="missing"
-                onToggle={(code) => toggleSetCode(setSelectedReceive, code)}
+                onToggle={(code) => toggleManualCandidate(setSelectedReceive, setManualReceiveSelection, code)}
               />
             </div>
           ) : null}
 
           <ReviewExchange
             mode="manual"
-            selectedReceive={selectedReceive}
-            selectedGive={selectedGive}
+            selectedReceive={manualReceiveSelection}
+            selectedGive={manualGiveSelection}
+            displayReceiveCodes={Array.from(selectedReceive)}
+            displayGiveCodes={Array.from(selectedGive)}
             stickersByCanonicalCode={stickersByCanonicalCode}
             collection={collection}
             onConfirm={handleConfirmExchange}
             onUndo={onUndoQrExchange}
             canUndo={canUndoQrExchange}
             onBackToManual={() => setManualStep('select')}
-            onToggleReceive={(code) => toggleSetCode(setSelectedReceive, code)}
-            onToggleGive={(code) => toggleSetCode(setSelectedGive, code)}
+            onToggleReceive={(code) => toggleSetCode(setManualReceiveSelection, code)}
+            onToggleGive={(code) => toggleSetCode(setManualGiveSelection, code)}
           />
         </>
       )}

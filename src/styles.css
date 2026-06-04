@@ -4086,6 +4086,28 @@ a {
   color: #fff;
 }
 
+.exchange-selectable-card.is-receive-selection.is-selected {
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.08);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+}
+
+.exchange-selectable-card.is-receive-selection.is-selected .exchange-selected-badge {
+  background: #16a34a;
+  color: #fff;
+}
+
+.exchange-selectable-card.is-give-selection.is-selected {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.07);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.13);
+}
+
+.exchange-selectable-card.is-give-selection.is-selected .exchange-selected-badge {
+  background: #dc2626;
+  color: #fff;
+}
+
 .exchange-unknown-sticker {
   min-height: 84px;
   border: 2px dashed #cbd5e1;

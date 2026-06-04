@@ -1097,6 +1097,32 @@ function App() {
     setToast({ text: 'Respaldo guardado.' })
   }
 
+  const applyBackupText = (backupText, successMessage) => {
+    const importedBackup = importCollectionBackup(backupText)
+    setCollection(importedBackup.collection)
+
+    if (typeof importedBackup.isSoundEnabled === 'boolean') {
+      setIsSoundEnabled(importedBackup.isSoundEnabled)
+    }
+
+    setToast({ text: successMessage })
+    return importedBackup
+  }
+
+  const handleGenerateBackupText = () => {
+    setToast({ text: 'QR de respaldo generado.' })
+    return exportCollectionBackup(collection, { isSoundEnabled })
+  }
+
+  const handleImportBackupText = (backupText) => {
+    try {
+      return applyBackupText(backupText, 'Respaldo QR subido correctamente.')
+    } catch (importError) {
+      setToast({ text: importError.message || 'No se pudo importar el respaldo QR.' })
+      throw importError
+    }
+  }
+
   const handleImportBackup = async (file) => {
     if (!file) {
       return
@@ -1104,14 +1130,7 @@ function App() {
 
     try {
       const importedText = await file.text()
-      const importedBackup = importCollectionBackup(importedText)
-      setCollection(importedBackup.collection)
-
-      if (typeof importedBackup.isSoundEnabled === 'boolean') {
-        setIsSoundEnabled(importedBackup.isSoundEnabled)
-      }
-
-      setToast({ text: 'Respaldo subido correctamente.' })
+      applyBackupText(importedText, 'Respaldo subido correctamente.')
     } catch (importError) {
       setToast({ text: importError.message || 'No se pudo importar el respaldo.' })
     }
@@ -1274,6 +1293,8 @@ function App() {
             actionHistory={actionHistory}
             onExportBackup={handleExportBackup}
             onImportBackup={handleImportBackup}
+            onGenerateBackupText={handleGenerateBackupText}
+            onImportBackupText={handleImportBackupText}
             onResetCollection={handleResetCollection}
             isSoundEnabled={isSoundEnabled}
             onToggleSound={() => setIsSoundEnabled((currentValue) => !currentValue)}

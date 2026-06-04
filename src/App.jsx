@@ -14,6 +14,7 @@ import {
   saveCollectionState,
 } from './storage/localCollection'
 import { buildCollectionStats } from './utils/collectionStats'
+import { canonicalIdToAppCode } from './utils/qrExchangeCodec'
 import { playStickerSound } from './utils/sounds'
 import './styles.css'
 
@@ -53,15 +54,14 @@ function normalizeAddedHistoryEntry(entry) {
 }
 
 const tabs = [
-  { id: 'home', label: 'Inicio' },
-  { id: 'album', label: 'Mi álbum' },
-  { id: 'missing', label: 'Faltantes' },
-  { id: 'duplicates', label: 'Repetidas' },
-  { id: 'camera', label: 'Cámara' },
-  { id: 'settings', label: 'Ajustes' },
+  { id: 'album', label: 'Álbum' },
+  { id: 'home', label: 'Estadísticas' },
+  { id: 'camera', label: 'Intercambio' },
+  { id: 'settings', label: 'Configuración' },
 ]
 
-const navTabs = tabs.filter((tab) => tab.id !== 'camera')
+const navTabs = tabs
+const mainTabIds = new Set(tabs.map((tab) => tab.id))
 
 const infoPages = {
   '/como-usar': {
@@ -485,7 +485,10 @@ function App() {
   const navRef = useRef(null)
   const highlightedTabTimeoutRef = useRef(null)
   const albumIndexScrollRef = useRef(0)
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('sticker-tracker-tab') || 'home')
+  const [activeTab, setActiveTab] = useState(() => {
+    const storedTab = localStorage.getItem('sticker-tracker-tab') || 'home'
+    return mainTabIds.has(storedTab) ? storedTab : 'home'
+  })
   const [selectedSectionId, setSelectedSectionId] = useState(() => localStorage.getItem('sticker-tracker-section') || '')
   const [albumFilter, setAlbumFilter] = useState(() => localStorage.getItem(ALBUM_FILTER_KEY) || 'all')
   const [targetStickerCode, setTargetStickerCode] = useState('')
@@ -502,6 +505,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [toast, setToast] = useState(null)
+  const [lastQrExchangeSnapshot, setLastQrExchangeSnapshot] = useState(null)
   const [actionHistory, setActionHistory] = useState(() => {
     localStorage.removeItem('sticker-tracker-2026-movement-history')
     localStorage.removeItem('sticker-tracker-2026-added-history')
@@ -975,13 +979,77 @@ function App() {
 
 
 
-  const handleApplyDetectedSticker = (code) => {
-    if (collection[code]?.owned) {
-      handleIncrementDuplicates(code)
+  const applyExchangeCollectionChanges = (receiveCodes, giveCodes, exchangeOrigin) => {
+    const previousCollection = collection
+
+    setCollection((currentCollection) => {
+      let nextCollection = currentCollection
+
+      receiveCodes.forEach((canonicalCode) => {
+        const code = canonicalIdToAppCode(canonicalCode)
+        const currentStickerState = nextCollection[code] ?? {
+          owned: false,
+          duplicates: 0,
+          pasted: false,
+        }
+
+        nextCollection = pruneCollectionEntry(nextCollection, code, {
+          ...currentStickerState,
+          owned: true,
+          origin: exchangeOrigin,
+        })
+      })
+
+      giveCodes.forEach((canonicalCode) => {
+        const code = canonicalIdToAppCode(canonicalCode)
+        const currentStickerState = nextCollection[code]
+
+        if (!currentStickerState) {
+          return
+        }
+
+        nextCollection = pruneCollectionEntry(nextCollection, code, {
+          ...currentStickerState,
+          owned: true,
+          duplicates: Math.max(0, (currentStickerState.duplicates ?? 0) - 1),
+          lastOutput: exchangeOrigin,
+        })
+      })
+
+      return nextCollection
+    })
+
+    setLastQrExchangeSnapshot({ collection: previousCollection, label: exchangeOrigin, createdAt: Date.now() })
+  }
+
+  const handleApplyQrExchange = (receiveCodes, giveCodes) => {
+    applyExchangeCollectionChanges(receiveCodes, giveCodes, 'intercambio_qr')
+    playAppSound('duplicate')
+    setToast({ text: 'Intercambio aplicado correctamente.' })
+    return { message: 'Intercambio aplicado correctamente' }
+  }
+
+  const handleMarkQrObtainedElsewhere = (receiveCodes) => {
+    applyExchangeCollectionChanges(receiveCodes, [], 'obtenidas_por_otro_metodo')
+    playAppSound('add')
+    setToast({ text: 'Figuritas marcadas como obtenidas por otro método.' })
+  }
+
+  const handleApplyManualExchange = (receiveCodes, giveCodes) => {
+    applyExchangeCollectionChanges(receiveCodes, giveCodes, 'intercambio_manual')
+    playAppSound('duplicate')
+    setToast({ text: 'Intercambio manual aplicado correctamente.' })
+    return { message: 'Intercambio manual aplicado correctamente' }
+  }
+
+  const handleUndoQrExchange = () => {
+    if (!lastQrExchangeSnapshot) {
       return
     }
 
-    handleToggleOwned(code)
+    setCollection(lastQrExchangeSnapshot.collection)
+    setLastQrExchangeSnapshot(null)
+    setToast({ text: 'Se deshizo el último intercambio.' })
   }
 
   const handleCopyText = async (text, successMessage) => {
@@ -1165,7 +1233,18 @@ function App() {
 
     switch (activeTab) {
       case 'camera':
-        return <CameraAddPage stickers={stickers} onApplyDetectedSticker={handleApplyDetectedSticker} />
+        return (
+          <CameraAddPage
+            stickers={stickers}
+            collection={collection}
+            teams={teams}
+            onApplyQrExchange={handleApplyQrExchange}
+            onApplyManualExchange={handleApplyManualExchange}
+            onMarkQrObtainedElsewhere={handleMarkQrObtainedElsewhere}
+            onUndoQrExchange={handleUndoQrExchange}
+            canUndoQrExchange={Boolean(lastQrExchangeSnapshot)}
+          />
+        )
       case 'album':
         return <AlbumPage {...pageProps} />
       case 'missing':

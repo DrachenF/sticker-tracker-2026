@@ -4205,3 +4205,95 @@ a {
     padding: 6px 2px;
   }
 }
+
+.exchange-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 4px;
+  border-radius: 14px;
+  background: #f1f5f9;
+}
+
+.exchange-mode-tabs button {
+  border: 0;
+  border-radius: 11px;
+  padding: 10px 12px;
+  background: transparent;
+  color: #475569;
+  font-weight: 800;
+}
+
+.exchange-mode-tabs button.is-active {
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
+}
+
+.manual-exchange-intro h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.manual-exchange-intro p:not(.camera-kicker) {
+  margin: 8px 0 0;
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.manual-section-stack {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.manual-section-accordion {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.manual-section-accordion summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  cursor: pointer;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.manual-section-accordion summary img {
+  width: 28px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+.manual-section-accordion summary em {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #e2e8f0;
+  color: #475569;
+  font-style: normal;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.manual-section-accordion .exchange-sticker-grid {
+  padding: 0 8px 10px;
+}
+
+.manual-exchange-list .sticker-card-grid {
+  width: 100%;
+}
+
+@media (min-width: 641px) {
+  .manual-exchange-columns {
+    align-items: start;
+  }
+}

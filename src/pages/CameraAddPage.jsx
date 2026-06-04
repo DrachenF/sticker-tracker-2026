@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import StickerCard from '../components/StickerCard'
+import { buildSections } from '../utils/collectionStats'
 import { getAccentColorForTeam } from '../utils/teamAccents'
 import {
   QR_EXCHANGE_ERROR,
@@ -35,6 +36,45 @@ function CodeList({ title, codes }) {
   )
 }
 
+function SelectableSticker({ canonicalCode, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
+  const appCode = canonicalIdToAppCode(canonicalCode)
+  const sticker = stickersByCanonicalCode[canonicalCode]
+  const isSelected = selectedCodes.has(canonicalCode)
+
+  if (!sticker) {
+    return (
+      <button
+        type="button"
+        className={`exchange-unknown-sticker ${isSelected ? 'is-selected' : ''}`}
+        onClick={() => onToggle(canonicalCode)}
+      >
+        {canonicalCode}
+      </button>
+    )
+  }
+
+  const state = context === 'duplicates'
+    ? { owned: true, duplicates: Math.max(1, collection[appCode]?.duplicates ?? 1), pasted: false }
+    : { owned: false, duplicates: 0, pasted: false }
+
+  return (
+    <div className={`exchange-selectable-card ${isSelected ? 'is-selected' : ''}`}>
+      <StickerCard
+        sticker={sticker}
+        stickerState={state}
+        accentColor={getAccentColorForTeam(getStickerMeta(sticker))}
+        context={context}
+        variant="album-grid"
+        onToggleOwned={() => onToggle(canonicalCode)}
+        onTogglePasted={() => {}}
+        onIncrementDuplicates={() => {}}
+        onDecrementDuplicates={() => {}}
+      />
+      <span className="exchange-selected-badge">{isSelected ? 'Elegida' : 'Tocar para elegir'}</span>
+    </div>
+  )
+}
+
 function SelectableStickerGrid({ title, helper, codes, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
   return (
     <section className="exchange-column">
@@ -47,55 +87,97 @@ function SelectableStickerGrid({ title, helper, codes, selectedCodes, stickersBy
       </header>
       <p className="camera-empty">{helper}</p>
       <div className="exchange-sticker-grid">
-        {codes.map((canonicalCode) => {
-          const appCode = canonicalIdToAppCode(canonicalCode)
-          const sticker = stickersByCanonicalCode[canonicalCode]
-          const isSelected = selectedCodes.has(canonicalCode)
-
-          if (!sticker) {
-            return (
-              <button
-                key={canonicalCode}
-                type="button"
-                className={`exchange-unknown-sticker ${isSelected ? 'is-selected' : ''}`}
-                onClick={() => onToggle(canonicalCode)}
-              >
-                {canonicalCode}
-              </button>
-            )
-          }
-
-          const state = context === 'duplicates'
-            ? { owned: true, duplicates: Math.max(1, collection[appCode]?.duplicates ?? 1), pasted: false }
-            : { owned: false, duplicates: 0, pasted: false }
-
-          return (
-            <div key={canonicalCode} className={`exchange-selectable-card ${isSelected ? 'is-selected' : ''}`}>
-              <StickerCard
-                sticker={sticker}
-                stickerState={state}
-                accentColor={getAccentColorForTeam(getStickerMeta(sticker))}
-                context={context}
-                variant="album-grid"
-                onToggleOwned={() => onToggle(canonicalCode)}
-                onTogglePasted={() => {}}
-                onIncrementDuplicates={() => {}}
-                onDecrementDuplicates={() => {}}
-              />
-              <span className="exchange-selected-badge">{isSelected ? 'Elegida' : 'Tocar para elegir'}</span>
-            </div>
-          )
-        })}
+        {codes.map((canonicalCode) => (
+          <SelectableSticker
+            key={canonicalCode}
+            canonicalCode={canonicalCode}
+            selectedCodes={selectedCodes}
+            stickersByCanonicalCode={stickersByCanonicalCode}
+            collection={collection}
+            context={context}
+            onToggle={onToggle}
+          />
+        ))}
       </div>
       {!codes.length ? <p className="camera-empty">No hay coincidencias útiles en este lado.</p> : null}
     </section>
   )
 }
 
+function ManualAccordionList({ title, helper, sections, selectedCodes, stickersByCanonicalCode, collection, context, onToggle }) {
+  return (
+    <section className="exchange-column manual-exchange-list">
+      <header className="exchange-column-header">
+        <div>
+          <p className="camera-kicker">{sections.reduce((total, section) => total + section.stickers.length, 0)} disponibles</p>
+          <h2>{title}</h2>
+        </div>
+        <span className="exchange-selection-count">{selectedCodes.size} seleccionadas</span>
+      </header>
+      <p className="camera-empty">{helper}</p>
+      <div className="manual-section-stack">
+        {sections.map((section, index) => (
+          <details key={section.id} className="manual-section-accordion" open={index === 0}>
+            <summary>
+              <span>{section.flagUrl ? <img src={section.flagUrl} alt="" /> : section.emoji}</span>
+              <strong>{section.title}</strong>
+              <em>{section.stickers.length}</em>
+            </summary>
+            <div className="exchange-sticker-grid">
+              {section.stickers.map((sticker) => {
+                const canonicalCode = appCodeToCanonicalId(sticker.code)
+                return (
+                  <SelectableSticker
+                    key={canonicalCode}
+                    canonicalCode={canonicalCode}
+                    selectedCodes={selectedCodes}
+                    stickersByCanonicalCode={stickersByCanonicalCode}
+                    collection={collection}
+                    context={context}
+                    onToggle={onToggle}
+                  />
+                )
+              })}
+            </div>
+          </details>
+        ))}
+      </div>
+      {!sections.length ? <p className="camera-empty">No hay cartas para mostrar en esta lista.</p> : null}
+    </section>
+  )
+}
+
+function ReviewExchange({ mode, selectedReceive, selectedGive, onConfirm, onMarkElsewhere, onUndo, canUndo, onBackToManual }) {
+  const hasSelection = selectedReceive.size > 0 || selectedGive.size > 0
+  const receiveCodes = Array.from(selectedReceive)
+  const giveCodes = Array.from(selectedGive)
+  const isManual = mode === 'manual'
+
+  return (
+    <section className="camera-result-block exchange-confirm-card">
+      <p className="camera-kicker">{isManual ? 'Revisión manual' : 'Confirmación QR'}</p>
+      <h2>{isManual ? 'Revisar intercambio' : 'Intercambiar seleccionadas'}</h2>
+      <p>{isManual ? 'Él/Ella me puede dar' : 'Vas a recibir'}: <strong>{selectedReceive.size} figuritas</strong></p>
+      <p>{isManual ? 'Yo puedo dar' : 'Vas a entregar'}: <strong>{selectedGive.size} figuritas</strong></p>
+      {hasSelection && selectedReceive.size !== selectedGive.size ? <p className="camera-warning">{UNEVEN_WARNING}</p> : null}
+      <CodeList title={isManual ? 'Él/Ella me puede dar' : 'Recibes'} codes={receiveCodes} />
+      <CodeList title={isManual ? 'Yo puedo dar' : 'Entregas'} codes={giveCodes} />
+      <div className="camera-actions">
+        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{isManual ? 'Intercambiar' : 'Intercambiar seleccionadas'}</button>
+        {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
+        {!isManual ? <button type="button" className="secondary-button" onClick={onMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button> : null}
+        <button type="button" className="secondary-button" onClick={onUndo} disabled={!canUndo}>Deshacer último intercambio</button>
+      </div>
+    </section>
+  )
+}
+
 export default function CameraAddPage({
   stickers,
+  teams,
   collection,
   onApplyQrExchange,
+  onApplyManualExchange,
   onMarkQrObtainedElsewhere,
   onUndoQrExchange,
   canUndoQrExchange,
@@ -104,6 +186,8 @@ export default function CameraAddPage({
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const scanLoopRef = useRef(0)
+  const [mode, setMode] = useState('qr')
+  const [manualStep, setManualStep] = useState('select')
   const [isScanning, setIsScanning] = useState(false)
   const [isReading, setIsReading] = useState(false)
   const [error, setError] = useState('')
@@ -124,6 +208,24 @@ export default function CameraAddPage({
 
   const mySets = useMemo(() => buildMyExchangeSets(stickers, collection), [stickers, collection])
 
+  const manualSections = useMemo(() => {
+    const sections = buildSections(stickers, teams)
+    return {
+      give: sections
+        .map((section) => ({
+          ...section,
+          stickers: section.stickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) > 0),
+        }))
+        .filter((section) => section.stickers.length),
+      receive: sections
+        .map((section) => ({
+          ...section,
+          stickers: section.stickers.filter((sticker) => !collection[sticker.code]?.owned),
+        }))
+        .filter((section) => section.stickers.length),
+    }
+  }, [stickers, teams, collection])
+
   const stopCamera = () => {
     window.cancelAnimationFrame(scanLoopRef.current)
     streamRef.current?.getTracks().forEach((track) => track.stop())
@@ -132,6 +234,14 @@ export default function CameraAddPage({
   }
 
   useEffect(() => () => stopCamera(), [])
+
+  const handleModeChange = (nextMode) => {
+    stopCamera()
+    setMode(nextMode)
+    setManualStep('select')
+    setError('')
+    setExchangeMessage('')
+  }
 
   const applyDecodedText = async (rawText) => {
     setIsReading(true)
@@ -264,6 +374,10 @@ export default function CameraAddPage({
     })
   }
 
+  const confirmWithWarning = (receiveCodes, giveCodes) => {
+    return receiveCodes.length === giveCodes.length || window.confirm(UNEVEN_WARNING)
+  }
+
   const handleConfirmExchange = () => {
     const receiveCodes = Array.from(selectedReceive)
     const giveCodes = Array.from(selectedGive)
@@ -273,14 +387,17 @@ export default function CameraAddPage({
       return
     }
 
-    if (receiveCodes.length !== giveCodes.length && !window.confirm(UNEVEN_WARNING)) {
+    if (!confirmWithWarning(receiveCodes, giveCodes)) {
       return
     }
 
-    const applied = onApplyQrExchange(receiveCodes, giveCodes)
-    setLastApplied({ receiveCodes, giveCodes, appliedAt: Date.now() })
+    const applied = mode === 'manual'
+      ? onApplyManualExchange(receiveCodes, giveCodes)
+      : onApplyQrExchange(receiveCodes, giveCodes)
+    setLastApplied({ receiveCodes, giveCodes, appliedAt: Date.now(), mode })
     setSelectedReceive(new Set())
     setSelectedGive(new Set())
+    setManualStep('select')
     setExchangeMessage(applied?.message || 'Intercambio aplicado correctamente')
     setError('')
   }
@@ -299,98 +416,149 @@ export default function CameraAddPage({
     setError('')
   }
 
-  const hasSelection = selectedReceive.size > 0 || selectedGive.size > 0
+  const hasManualSelection = selectedReceive.size > 0 || selectedGive.size > 0
 
   return (
     <section className="camera-page exchange-page">
       <header className="camera-header-card">
-        <p className="camera-kicker">Intercambio QR</p>
-        <h1>Códigos compatibles</h1>
-        <p className="camera-warning">Lee o genera códigos de “Figuritas App - Usa Méx Can 26” sin modificar tu inventario hasta confirmar el intercambio.</p>
+        <p className="camera-kicker">Intercambio</p>
+        <h1>Intercambio de figuritas</h1>
+        <p className="camera-warning">El inventario solo cambia cuando confirmas un intercambio.</p>
+        <div className="exchange-mode-tabs" role="tablist" aria-label="Modos de intercambio">
+          <button type="button" className={mode === 'qr' ? 'is-active' : ''} onClick={() => handleModeChange('qr')}>QR</button>
+          <button type="button" className={mode === 'manual' ? 'is-active' : ''} onClick={() => handleModeChange('manual')}>Manual</button>
+        </div>
       </header>
-
-      <div className="camera-input-card">
-        <div className="camera-actions exchange-primary-actions">
-          <button type="button" onClick={startCameraScan} disabled={isScanning || isReading}>Escanear QR de intercambio</button>
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isReading}>Subir imagen de QR</button>
-          <button type="button" onClick={handleGenerateQr} disabled={isGenerating}>{isGenerating ? 'Generando…' : 'Generar mi QR'}</button>
-        </div>
-        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleImageUpload(event.target.files?.[0])} />
-        <div className={`exchange-camera-view ${isScanning ? 'is-active' : ''}`}>
-          <video ref={videoRef} playsInline muted aria-label="Vista de cámara para escanear QR" />
-          {isScanning ? <button type="button" onClick={stopCamera}>Cerrar cámara</button> : null}
-        </div>
-      </div>
 
       {error ? <p className="camera-error">{error}</p> : null}
       {exchangeMessage ? <p className="exchange-success">{exchangeMessage}</p> : null}
 
-      {generatedText ? (
-        <section className="camera-result-block exchange-generated-card">
-          <header className="exchange-column-header">
-            <div>
-              <p className="camera-kicker">Mi código</p>
-              <h2>QR para que escaneen tu inventario</h2>
-            </div>
-          </header>
-          <img src={buildQrImageUrl(generatedText)} alt="QR de intercambio generado" className="exchange-qr-image" />
-          <textarea readOnly value={generatedText} aria-label="Texto completo del QR generado" />
-          <p className="camera-empty">El QR usa faltantes y repetidas actuales. Las repetidas se guardan como sí/no, sin cantidades.</p>
-        </section>
-      ) : null}
-
-      {decodedExchange ? (
+      {mode === 'qr' ? (
         <>
-          <section className="camera-result-block exchange-summary-card">
-            <p className="camera-kicker">Código leído</p>
-            <div className="exchange-summary-grid">
-              <span>Faltantes detectados: <strong>{decodedExchange.theirMissing.length}</strong></span>
-              <span>Repetidas detectadas: <strong>{decodedExchange.theirDuplicates.length}</strong></span>
-              <span>Bytes por bloque: <strong>{decodedExchange.blockBytes.missing}/{decodedExchange.blockBytes.duplicates}</strong></span>
-              <span>{decodedExchange.hasCocaCola ? 'Incluye espacio Coca-Cola' : 'Álbum base'}</span>
+          <div className="camera-input-card">
+            <p className="camera-empty">Modo QR: escanea, sube una imagen o genera tu propio QR compatible.</p>
+            <div className="camera-actions exchange-primary-actions">
+              <button type="button" onClick={startCameraScan} disabled={isScanning || isReading}>Escanear QR de intercambio</button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isReading}>Subir imagen de QR</button>
+              <button type="button" onClick={handleGenerateQr} disabled={isGenerating}>{isGenerating ? 'Generando…' : 'Generar mi QR'}</button>
             </div>
-            {decodedExchange.unknownIds.length ? <p className="camera-warning">Se detectaron códigos futuros o desconocidos: {decodedExchange.unknownIds.join(', ')}.</p> : null}
-          </section>
-
-          <div className={`exchange-columns ${lastApplied ? 'is-exchange-applied' : ''}`}>
-            <SelectableStickerGrid
-              title="Te puede dar"
-              helper="Repetidas de esa persona que están en tus faltantes. Selecciona solo las que recibirás."
-              codes={decodedExchange.theyCanGiveMe}
-              selectedCodes={selectedReceive}
-              stickersByCanonicalCode={stickersByCanonicalCode}
-              collection={collection}
-              context="missing"
-              onToggle={(code) => toggleSetCode(setSelectedReceive, code)}
-            />
-            <SelectableStickerGrid
-              title="Le puedes dar"
-              helper="Tus repetidas que están en sus faltantes. Selecciona solo las que entregarás."
-              codes={decodedExchange.iCanGiveThem}
-              selectedCodes={selectedGive}
-              stickersByCanonicalCode={stickersByCanonicalCode}
-              collection={collection}
-              context="duplicates"
-              onToggle={(code) => toggleSetCode(setSelectedGive, code)}
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleImageUpload(event.target.files?.[0])} />
+            <div className={`exchange-camera-view ${isScanning ? 'is-active' : ''}`}>
+              <video ref={videoRef} playsInline muted aria-label="Vista de cámara para escanear QR" />
+              {isScanning ? <button type="button" onClick={stopCamera}>Cerrar cámara</button> : null}
+            </div>
           </div>
 
-          <section className="camera-result-block exchange-confirm-card">
-            <p className="camera-kicker">Confirmación</p>
-            <h2>Intercambiar seleccionadas</h2>
-            <p>Vas a recibir: <strong>{selectedReceive.size} figuritas</strong></p>
-            <p>Vas a entregar: <strong>{selectedGive.size} figuritas</strong></p>
-            {hasSelection && selectedReceive.size !== selectedGive.size ? <p className="camera-warning">{UNEVEN_WARNING}</p> : null}
-            <CodeList title="Recibes" codes={Array.from(selectedReceive)} />
-            <CodeList title="Entregas" codes={Array.from(selectedGive)} />
+          {generatedText ? (
+            <section className="camera-result-block exchange-generated-card">
+              <header className="exchange-column-header">
+                <div>
+                  <p className="camera-kicker">Mi código</p>
+                  <h2>QR para que escaneen tu inventario</h2>
+                </div>
+              </header>
+              <img src={buildQrImageUrl(generatedText)} alt="QR de intercambio generado" className="exchange-qr-image" />
+              <textarea readOnly value={generatedText} aria-label="Texto completo del QR generado" />
+              <p className="camera-empty">El QR usa faltantes y repetidas actuales. Las repetidas se guardan como sí/no, sin cantidades.</p>
+            </section>
+          ) : null}
+
+          {decodedExchange ? (
+            <>
+              <section className="camera-result-block exchange-summary-card">
+                <p className="camera-kicker">Código leído</p>
+                <div className="exchange-summary-grid">
+                  <span>Faltantes detectados: <strong>{decodedExchange.theirMissing.length}</strong></span>
+                  <span>Repetidas detectadas: <strong>{decodedExchange.theirDuplicates.length}</strong></span>
+                  <span>Bytes por bloque: <strong>{decodedExchange.blockBytes.missing}/{decodedExchange.blockBytes.duplicates}</strong></span>
+                  <span>{decodedExchange.hasCocaCola ? 'Incluye espacio Coca-Cola' : 'Álbum base'}</span>
+                </div>
+                {decodedExchange.unknownIds.length ? <p className="camera-warning">Se detectaron códigos futuros o desconocidos: {decodedExchange.unknownIds.join(', ')}.</p> : null}
+              </section>
+
+              <div className={`exchange-columns ${lastApplied?.mode === 'qr' ? 'is-exchange-applied' : ''}`}>
+                <SelectableStickerGrid
+                  title="Te puede dar"
+                  helper="Repetidas de esa persona que están en tus faltantes. Selecciona solo las que recibirás."
+                  codes={decodedExchange.theyCanGiveMe}
+                  selectedCodes={selectedReceive}
+                  stickersByCanonicalCode={stickersByCanonicalCode}
+                  collection={collection}
+                  context="missing"
+                  onToggle={(code) => toggleSetCode(setSelectedReceive, code)}
+                />
+                <SelectableStickerGrid
+                  title="Le puedes dar"
+                  helper="Tus repetidas que están en sus faltantes. Selecciona solo las que entregarás."
+                  codes={decodedExchange.iCanGiveThem}
+                  selectedCodes={selectedGive}
+                  stickersByCanonicalCode={stickersByCanonicalCode}
+                  collection={collection}
+                  context="duplicates"
+                  onToggle={(code) => toggleSetCode(setSelectedGive, code)}
+                />
+              </div>
+
+              <ReviewExchange
+                mode="qr"
+                selectedReceive={selectedReceive}
+                selectedGive={selectedGive}
+                onConfirm={handleConfirmExchange}
+                onMarkElsewhere={handleMarkElsewhere}
+                onUndo={onUndoQrExchange}
+                canUndo={canUndoQrExchange}
+              />
+            </>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <section className="camera-result-block manual-exchange-intro">
+            <p className="camera-kicker">Manual</p>
+            <h2>Intercambio sin QR</h2>
+            <p>Usa el intercambio manual cuando la otra persona no tenga QR. Selecciona manualmente lo que puedes dar y lo que te pueden dar. El inventario solo se actualiza al confirmar el intercambio.</p>
             <div className="camera-actions">
-              <button type="button" onClick={handleConfirmExchange} disabled={!hasSelection}>Intercambiar seleccionadas</button>
-              <button type="button" className="secondary-button" onClick={handleMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button>
-              <button type="button" className="secondary-button" onClick={onUndoQrExchange} disabled={!canUndoQrExchange}>Deshacer último intercambio</button>
+              <button type="button" onClick={() => setManualStep('select')}>Seleccionar cartas</button>
+              <button type="button" className="secondary-button" onClick={() => setManualStep('review')} disabled={!hasManualSelection}>Revisar intercambio</button>
             </div>
           </section>
+
+          {manualStep === 'select' ? (
+            <div className="exchange-columns manual-exchange-columns">
+              <ManualAccordionList
+                title="Mis repetidas"
+                helper="Estas son las figuritas que yo puedo darle a la otra persona. Seleccionarlas no cambia tu inventario todavía."
+                sections={manualSections.give}
+                selectedCodes={selectedGive}
+                stickersByCanonicalCode={stickersByCanonicalCode}
+                collection={collection}
+                context="duplicates"
+                onToggle={(code) => toggleSetCode(setSelectedGive, code)}
+              />
+              <ManualAccordionList
+                title="Mis faltantes"
+                helper="Estas son las figuritas que la otra persona puede darme. Seleccionarlas no las marca como conseguidas todavía."
+                sections={manualSections.receive}
+                selectedCodes={selectedReceive}
+                stickersByCanonicalCode={stickersByCanonicalCode}
+                collection={collection}
+                context="missing"
+                onToggle={(code) => toggleSetCode(setSelectedReceive, code)}
+              />
+            </div>
+          ) : null}
+
+          <ReviewExchange
+            mode="manual"
+            selectedReceive={selectedReceive}
+            selectedGive={selectedGive}
+            onConfirm={handleConfirmExchange}
+            onUndo={onUndoQrExchange}
+            canUndo={canUndoQrExchange}
+            onBackToManual={() => setManualStep('select')}
+          />
         </>
-      ) : null}
+      )}
     </section>
   )
 }

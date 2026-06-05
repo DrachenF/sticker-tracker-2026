@@ -83,6 +83,19 @@ export function preloadQrTools() {
   ])
 }
 
+export function schedulePreloadQrTools() {
+  const runPreload = () => {
+    preloadQrTools()
+  }
+
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(runPreload, { timeout: 1600 })
+    return
+  }
+
+  window.setTimeout(runPreload, 450)
+}
+
 function createCanvas(width, height) {
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(width))
@@ -129,8 +142,12 @@ function cropCenter(sourceCanvas, ratio = 0.78) {
 }
 
 function buildImageVariants(source, width, height) {
-  const base = drawSourceToCanvas(source, width, height)
-  const double = drawSourceToCanvas(source, width, height, 2)
+  const maxSide = Math.max(width, height)
+  const baseScale = maxSide > 1200 ? 1200 / maxSide : 1
+  const baseWidth = width * baseScale
+  const baseHeight = height * baseScale
+  const base = drawSourceToCanvas(source, baseWidth, baseHeight)
+  const double = drawSourceToCanvas(source, baseWidth, baseHeight, 2)
   const center = cropCenter(base)
   const variants = [base, double, center, drawSourceToCanvas(center, center.width, center.height, 2)]
   const transformed = []
@@ -275,15 +292,16 @@ export async function generateQrImageAssets(text, options = {}) {
   const qr = qrcode(0, options.errorCorrectionLevel || 'M')
   const quietModules = options.quietModules ?? 8
   const pngSize = options.pngSize ?? 1200
+  const shouldBuildPng = options.includePng !== false
 
   qr.addData(text)
   qr.make()
 
-  const pngCanvas = drawQrPngCanvas(qr, quietModules, pngSize)
+  const pngCanvas = shouldBuildPng ? drawQrPngCanvas(qr, quietModules, pngSize) : null
 
   return {
     svgDataUrl: buildQrSvgDataUrl(qr, quietModules),
-    pngDataUrl: pngCanvas.toDataURL('image/png'),
+    pngDataUrl: pngCanvas?.toDataURL('image/png') || '',
     validationCanvas: pngCanvas,
     moduleCount: qr.getModuleCount(),
   }

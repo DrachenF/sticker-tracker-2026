@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { generateQrImageAssets, preloadQrTools, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, schedulePreloadQrTools, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 
 function SettingsPage({
   collection,
@@ -26,14 +26,14 @@ function SettingsPage({
   const previewFor = (key) => (expandedKey === key ? (actionHistory[key] || []) : (actionHistory[key] || []).slice(0, 10))
 
   const stopBackupQrCamera = () => {
-    window.cancelAnimationFrame(backupQrLoopRef.current)
+    window.clearTimeout(backupQrLoopRef.current)
     backupQrStreamRef.current?.getTracks().forEach((track) => track.stop())
     backupQrStreamRef.current = null
     setIsBackupQrScanning(false)
   }
 
   useEffect(() => {
-    preloadQrTools()
+    schedulePreloadQrTools()
     return () => stopBackupQrCamera()
   }, [])
 
@@ -42,7 +42,7 @@ function SettingsPage({
 
     try {
       const text = onGenerateBackupText()
-      const { svgDataUrl: image } = await generateQrImageAssets(text, { errorCorrectionLevel: 'M', quietModules: 8, pngSize: 1200 })
+      const { svgDataUrl: image } = await generateQrImageAssets(text, { errorCorrectionLevel: 'M', quietModules: 8, includePng: false })
       setBackupQrText(text)
       setBackupQrImage(image)
     } catch {
@@ -93,10 +93,10 @@ function SettingsPage({
           // Keep scanning; individual frames can fail without affecting the flow.
         }
 
-        backupQrLoopRef.current = window.requestAnimationFrame(scan)
+        backupQrLoopRef.current = window.setTimeout(scan, 420)
       }
 
-      backupQrLoopRef.current = window.requestAnimationFrame(scan)
+      backupQrLoopRef.current = window.setTimeout(scan, 180)
     } catch {
       setBackupQrError('No se pudo acceder a la cámara. Puedes subir una imagen del QR.')
     }

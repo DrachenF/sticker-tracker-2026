@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import StickerCard from '../components/StickerCard'
 import { buildSections } from '../utils/collectionStats'
 import { getAccentColorForTeam } from '../utils/teamAccents'
-import { generateQrImageAssets, preloadQrTools, readQrFromCanvas, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, schedulePreloadQrTools, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 import {
   FIGURITAS_PREFIX,
   QR_EXCHANGE_ERROR,
@@ -272,6 +272,17 @@ function ReviewExchange({
           selectionTone="give"
           onToggle={onToggleGive}
         />
+        <ReviewSelectedCards
+          title={isManual ? 'Yo puedo dar' : 'Entregas'}
+          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
+          codes={giveCodes}
+          selectedCodes={selectedGive}
+          stickersByCanonicalCode={stickersByCanonicalCode}
+          collection={collection}
+          context="duplicates"
+          selectionTone="give"
+          onToggle={onToggleGive}
+        />
       </div>
       <div className="camera-actions">
         <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
@@ -377,14 +388,14 @@ export default function CameraAddPage({
   }, [stickers, teams, collection])
 
   const stopCamera = () => {
-    window.cancelAnimationFrame(scanLoopRef.current)
+    window.clearTimeout(scanLoopRef.current)
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     setIsScanning(false)
   }
 
   useEffect(() => {
-    preloadQrTools()
+    schedulePreloadQrTools()
     return () => stopCamera()
   }, [])
 
@@ -452,10 +463,10 @@ export default function CameraAddPage({
           // Keep scanning; some frames may not be readable.
         }
 
-        scanLoopRef.current = window.requestAnimationFrame(scan)
+        scanLoopRef.current = window.setTimeout(scan, 420)
       }
 
-      scanLoopRef.current = window.requestAnimationFrame(scan)
+      scanLoopRef.current = window.setTimeout(scan, 180)
     } catch {
       setError('No se pudo acceder a la cámara. Puedes subir una imagen del QR.')
     }
@@ -499,24 +510,12 @@ export default function CameraAddPage({
       const qrAssets = await generateQrImageAssets(text, {
         errorCorrectionLevel: 'M',
         quietModules: 8,
-        pngSize: 1200,
+        includePng: false,
       })
       setQrDebugInfo(decodedGenerated.debug || null)
       setGeneratedText(text)
       setGeneratedQrImage(qrAssets.svgDataUrl)
-      setGeneratedQrDownload(qrAssets.pngDataUrl)
-
-      window.setTimeout(async () => {
-        try {
-          const validationText = await readQrFromCanvas(qrAssets.validationCanvas)
-
-          if (validationText !== text) {
-            console.warn('No se pudo validar el QR generado.')
-          }
-        } catch (validationError) {
-          console.warn('No se pudo validar el QR generado.', validationError)
-        }
-      }, 0)
+      setGeneratedQrDownload('')
     } catch (generateError) {
       console.error(generateError)
       setGeneratedText('')
@@ -537,13 +536,21 @@ export default function CameraAddPage({
     }
   }
 
-  const handleDownloadGeneratedQr = () => {
-    if (!generatedQrDownload) {
-      return
+  const handleDownloadGeneratedQr = async () => {
+    let downloadImage = generatedQrDownload
+
+    if (!downloadImage) {
+      const qrAssets = await generateQrImageAssets(generatedText, {
+        errorCorrectionLevel: 'M',
+        quietModules: 8,
+        pngSize: 1200,
+      })
+      downloadImage = qrAssets.pngDataUrl
+      setGeneratedQrDownload(downloadImage)
     }
 
     const link = document.createElement('a')
-    link.href = generatedQrDownload
+    link.href = downloadImage
     link.download = 'mi-qr-intercambio-2026.png'
     document.body.append(link)
     link.click()

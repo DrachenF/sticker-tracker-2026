@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import StickerCard from '../components/StickerCard'
 import { buildSections } from '../utils/collectionStats'
 import { getAccentColorForTeam } from '../utils/teamAccents'
+import { generateQrDataUrl, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 import {
   QR_EXCHANGE_ERROR,
   appCodeToCanonicalId,
   buildMyExchangeSets,
-  buildQrImageUrl,
   canonicalIdToAppCode,
   compareExchange,
   decodeExchangeText,
@@ -14,14 +14,6 @@ import {
 } from '../utils/qrExchangeCodec'
 
 const UNEVEN_WARNING = 'La cantidad recibida y entregada no es igual. Confirma si este intercambio es correcto.'
-
-function getBarcodeDetector() {
-  if (!('BarcodeDetector' in window)) {
-    return null
-  }
-
-  return new window.BarcodeDetector({ formats: ['qr_code', 'aztec', 'data_matrix', 'pdf417'] })
-}
 
 function getStickerMeta(sticker) {
   return sticker?.teamCode || sticker?.section || 'base'
@@ -296,6 +288,7 @@ export default function CameraAddPage({
   const [settledQrReceive, setSettledQrReceive] = useState(new Set())
   const [settledQrGive, setSettledQrGive] = useState(new Set())
   const [generatedText, setGeneratedText] = useState('')
+  const [generatedQrImage, setGeneratedQrImage] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [exchangeMessage, setExchangeMessage] = useState('')
   const [lastApplied, setLastApplied] = useState(null)
@@ -381,7 +374,7 @@ export default function CameraAddPage({
       setSettledQrGive(new Set())
       stopCamera()
     } catch (decodeError) {
-      setError(decodeError.message || QR_EXCHANGE_ERROR)
+      setError(decodeError.message === QR_EXCHANGE_ERROR ? 'El QR fue leído, pero no parece compatible con Figuritas App.' : decodeError.message || 'El QR parece compatible, pero no se pudo interpretar el contenido.')
     } finally {
       setIsReading(false)
     }
@@ -389,12 +382,6 @@ export default function CameraAddPage({
 
   const startCameraScan = async () => {
     setError('')
-    const detector = getBarcodeDetector()
-
-    if (!detector) {
-      setError('Tu navegador no soporta lectura directa de QR. Usa “Subir imagen de QR”.')
-      return
-    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -412,8 +399,7 @@ export default function CameraAddPage({
         }
 
         try {
-          const barcodes = await detector.detect(videoRef.current)
-          const value = barcodes.find((barcode) => barcode.rawValue)?.rawValue
+          const value = await readQrFromVideo(videoRef.current)
 
           if (value) {
             await applyDecodedText(value)
@@ -428,7 +414,7 @@ export default function CameraAddPage({
 
       scanLoopRef.current = window.requestAnimationFrame(scan)
     } catch {
-      setError('No se pudo abrir la cámara. Revisa permisos o sube una imagen del QR.')
+      setError('No se pudo acceder a la cámara. Puedes subir una imagen del QR.')
     }
   }
 
@@ -438,27 +424,12 @@ export default function CameraAddPage({
     }
 
     setError('')
-    const detector = getBarcodeDetector()
-
-    if (!detector) {
-      setError('Tu navegador no soporta leer QR desde imagen en esta app.')
-      return
-    }
-
     setIsReading(true)
     try {
-      const bitmap = await createImageBitmap(file)
-      const barcodes = await detector.detect(bitmap)
-      bitmap.close?.()
-      const value = barcodes.find((barcode) => barcode.rawValue)?.rawValue
-
-      if (!value) {
-        throw new Error(QR_EXCHANGE_ERROR)
-      }
-
+      const value = await readQrFromImageFile(file)
       await applyDecodedText(value)
     } catch (uploadError) {
-      setError(uploadError.message || QR_EXCHANGE_ERROR)
+      setError(uploadError.message || 'No se pudo detectar un QR en esta imagen.')
     } finally {
       setIsReading(false)
       fileInputRef.current.value = ''
@@ -474,7 +445,9 @@ export default function CameraAddPage({
         missingIds: mySets.myMissing,
         duplicateIds: mySets.myDuplicates,
       })
+      const qrImage = await generateQrDataUrl(text)
       setGeneratedText(text)
+      setGeneratedQrImage(qrImage)
     } catch (generateError) {
       setError(generateError.message || 'No se pudo generar tu QR de intercambio.')
     } finally {
@@ -603,7 +576,7 @@ export default function CameraAddPage({
                   <h2>QR para que escaneen tu inventario</h2>
                 </div>
               </header>
-              <img src={buildQrImageUrl(generatedText)} alt="QR de intercambio generado" className="exchange-qr-image" />
+              <img src={generatedQrImage} alt="QR de intercambio generado" className="exchange-qr-image" />
               <textarea readOnly value={generatedText} aria-label="Texto completo del QR generado" />
               <p className="camera-empty">El QR usa faltantes y repetidas actuales. Las repetidas se guardan como sí/no, sin cantidades.</p>
             </section>

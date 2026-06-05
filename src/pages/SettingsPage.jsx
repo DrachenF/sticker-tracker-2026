@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { buildQrImageUrl } from '../utils/qrExchangeCodec'
-
-function getBarcodeDetector() {
-  if (!('BarcodeDetector' in window)) {
-    return null
-  }
-
-  return new window.BarcodeDetector({ formats: ['qr_code', 'aztec', 'data_matrix', 'pdf417'] })
-}
+import { generateQrDataUrl, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 
 function SettingsPage({
   collection,
@@ -23,6 +15,7 @@ function SettingsPage({
   const touchedCount = Object.keys(collection).length
   const [expandedKey, setExpandedKey] = useState('')
   const [backupQrText, setBackupQrText] = useState('')
+  const [backupQrImage, setBackupQrImage] = useState('')
   const [backupQrError, setBackupQrError] = useState('')
   const [isBackupQrScanning, setIsBackupQrScanning] = useState(false)
   const [isBackupQrReading, setIsBackupQrReading] = useState(false)
@@ -41,9 +34,17 @@ function SettingsPage({
 
   useEffect(() => () => stopBackupQrCamera(), [])
 
-  const handleGenerateBackupQr = () => {
+  const handleGenerateBackupQr = async () => {
     setBackupQrError('')
-    setBackupQrText(onGenerateBackupText())
+
+    try {
+      const text = onGenerateBackupText()
+      const image = await generateQrDataUrl(text)
+      setBackupQrText(text)
+      setBackupQrImage(image)
+    } catch {
+      setBackupQrError('No se pudo generar el QR de respaldo en este navegador.')
+    }
   }
 
   const applyBackupQrText = async (rawText) => {
@@ -62,12 +63,6 @@ function SettingsPage({
 
   const handleScanBackupQr = async () => {
     setBackupQrError('')
-    const detector = getBarcodeDetector()
-
-    if (!detector) {
-      setBackupQrError('Tu navegador no soporta leer QR con cámara. Usa “Leer QR desde imagen”.')
-      return
-    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -85,8 +80,7 @@ function SettingsPage({
         }
 
         try {
-          const codes = await detector.detect(backupQrVideoRef.current)
-          const value = codes.find((code) => code.rawValue)?.rawValue
+          const value = await readQrFromVideo(backupQrVideoRef.current)
 
           if (value) {
             await applyBackupQrText(value)
@@ -101,7 +95,7 @@ function SettingsPage({
 
       backupQrLoopRef.current = window.requestAnimationFrame(scan)
     } catch {
-      setBackupQrError('No se pudo abrir la cámara para leer el QR de respaldo.')
+      setBackupQrError('No se pudo acceder a la cámara. Puedes subir una imagen del QR.')
     }
   }
 
@@ -111,27 +105,12 @@ function SettingsPage({
     }
 
     setBackupQrError('')
-    const detector = getBarcodeDetector()
-
-    if (!detector) {
-      setBackupQrError('Tu navegador no soporta leer QR desde imagen en esta app.')
-      return
-    }
-
     setIsBackupQrReading(true)
     try {
-      const bitmap = await createImageBitmap(file)
-      const codes = await detector.detect(bitmap)
-      bitmap.close?.()
-      const value = codes.find((code) => code.rawValue)?.rawValue
-
-      if (!value) {
-        throw new Error('No se encontró un QR de respaldo válido en la imagen.')
-      }
-
+      const value = await readQrFromImageFile(file)
       await applyBackupQrText(value)
     } catch (error) {
-      setBackupQrError(error.message || 'No se pudo leer este QR de respaldo.')
+      setBackupQrError(error.message || 'No se pudo detectar un QR en esta imagen.')
     } finally {
       setIsBackupQrReading(false)
       backupQrFileRef.current.value = ''
@@ -248,7 +227,7 @@ function SettingsPage({
           </div>
           {backupQrText ? (
             <div className="settings-backup-qr-output">
-              <img src={buildQrImageUrl(backupQrText)} alt="QR de respaldo generado" />
+              <img src={backupQrImage} alt="QR de respaldo generado" />
               <p className="settings-note">Haz captura de este QR para guardar tu respaldo. Si tu colección está muy grande y el QR no se lee, usa el archivo .albu.</p>
             </div>
           ) : null}

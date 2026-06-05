@@ -4,6 +4,7 @@ const COCA_COLA_BLOCK_BYTES = 125
 const BASE_REAL_STICKERS = 980
 const COCA_COLA_REAL_STICKERS = 994
 const GZIP_BASE64_MARKER = 'H4sI'
+const VALID_BLOCK_BYTE_LENGTHS = [BASE_BLOCK_BYTES, COCA_COLA_BLOCK_BYTES]
 
 export const QR_EXCHANGE_ERROR =
   'No se pudo leer este código de intercambio. Verifica que sea un QR de Figuritas App - Usa Méx Can 26.'
@@ -46,7 +47,7 @@ export function base64ToBytes(base64Text) {
 }
 
 async function gzipBytes(bytes) {
-  if (!('CompressionStream' in window)) {
+  if (!('CompressionStream' in globalThis)) {
     throw new Error('Tu navegador no permite generar gzip desde la app.')
   }
 
@@ -55,7 +56,7 @@ async function gzipBytes(bytes) {
 }
 
 async function gunzipBytes(bytes) {
-  if (!('DecompressionStream' in window)) {
+  if (!('DecompressionStream' in globalThis)) {
     throw new Error(QR_EXCHANGE_ERROR)
   }
 
@@ -85,7 +86,7 @@ export function extractFiguritasPayload(rawText) {
   const parts = payload.split(';')
 
   if (parts.length < 2) {
-    throw new Error('El QR no tiene dos bloques separados por ;')
+    throw new Error('El QR no contiene dos bloques separados por ;')
   }
 
   return {
@@ -96,11 +97,11 @@ export function extractFiguritasPayload(rawText) {
 }
 
 function assertValidBlockSizes(missingBytes, duplicatesBytes) {
-  if (![BASE_BLOCK_BYTES, COCA_COLA_BLOCK_BYTES].includes(missingBytes.length)) {
+  if (!VALID_BLOCK_BYTE_LENGTHS.includes(missingBytes.length)) {
     throw new Error(`Tamaño inválido de bloque faltantes: ${missingBytes.length}`)
   }
 
-  if (![BASE_BLOCK_BYTES, COCA_COLA_BLOCK_BYTES].includes(duplicatesBytes.length)) {
+  if (!VALID_BLOCK_BYTE_LENGTHS.includes(duplicatesBytes.length)) {
     throw new Error(`Tamaño inválido de bloque repetidas: ${duplicatesBytes.length}`)
   }
 
@@ -109,7 +110,7 @@ function assertValidBlockSizes(missingBytes, duplicatesBytes) {
   }
 }
 
-function countActiveBits(bytes, realStickerCount) {
+export function countActiveBits(bytes, realStickerCount = bytes.length * 8) {
   let count = 0
 
   for (let index = 0; index < realStickerCount; index += 1) {
@@ -119,6 +120,14 @@ function countActiveBits(bytes, realStickerCount) {
   }
 
   return count
+}
+
+export function indexToStickerId(index) {
+  return canonicalIdForIndex(index)
+}
+
+export function stickerIdToIndex(stickerId) {
+  return indexForCanonicalId(stickerId)
 }
 
 export function canonicalIdForIndex(index) {
@@ -240,6 +249,8 @@ export async function decodeFiguritasQrPayload(rawText) {
       rawText,
       theirMissing: missing.ids,
       theirDuplicates: duplicates.ids,
+      missing: missing.ids,
+      duplicates: duplicates.ids,
       unknownIds: Array.from(new Set([...missing.unknownIds, ...duplicates.unknownIds])),
       blockBytes: {
         missing: missingBytes.length,
@@ -321,7 +332,14 @@ export async function encodeFiguritasQrPayload({ missingIds, duplicateIds, inclu
     bytesToGzipBase64(missingBytes),
     bytesToGzipBase64(duplicateBytes),
   ])
-  const qrText = `${FIGURITAS_PREFIX}${base64Faltantes};${base64Repetidas}`
+  const qrText = FIGURITAS_PREFIX + base64Faltantes + ';' + base64Repetidas
+
+  console.log('QR prefix:', qrText.slice(0, 2))
+  console.log('First code point:', qrText.codePointAt(0)?.toString(16))
+  console.log('Faltantes usados para QR:', missingIds)
+  console.log('Repetidas usadas para QR:', Array.from(new Set(duplicateIds)))
+  console.log('Bits activos faltantes:', countActiveBits(missingBytes, realStickerLimit))
+  console.log('Bits activos repetidas:', countActiveBits(duplicateBytes, realStickerLimit))
 
   return {
     qrText,
@@ -342,7 +360,7 @@ export function buildQrImageUrl(text) {
   const params = new URLSearchParams({
     data: text,
     size: '320x320',
-    ecc: 'H',
+    ecc: 'M',
     margin: '12',
   })
 

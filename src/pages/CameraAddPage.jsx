@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import StickerCard from '../components/StickerCard'
 import { buildSections } from '../utils/collectionStats'
 import { getAccentColorForTeam } from '../utils/teamAccents'
-import { generateQrDataUrl, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, readQrFromCanvas, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 import {
   QR_EXCHANGE_ERROR,
   appCodeToCanonicalId,
@@ -289,6 +289,7 @@ export default function CameraAddPage({
   const [settledQrGive, setSettledQrGive] = useState(new Set())
   const [generatedText, setGeneratedText] = useState('')
   const [generatedQrImage, setGeneratedQrImage] = useState('')
+  const [generatedQrDownload, setGeneratedQrDownload] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [exchangeMessage, setExchangeMessage] = useState('')
   const [lastApplied, setLastApplied] = useState(null)
@@ -445,14 +446,47 @@ export default function CameraAddPage({
         missingIds: mySets.myMissing,
         duplicateIds: mySets.myDuplicates,
       })
-      const qrImage = await generateQrDataUrl(text)
+      const qrAssets = await generateQrImageAssets(text, {
+        errorCorrectionLevel: 'M',
+        quietModules: 8,
+        pngSize: 1200,
+      })
+      const validationText = await readQrFromCanvas(qrAssets.validationCanvas)
+
+      if (validationText !== text) {
+        console.warn('No se pudo validar el QR generado.')
+      }
+
       setGeneratedText(text)
-      setGeneratedQrImage(qrImage)
+      setGeneratedQrImage(qrAssets.svgDataUrl)
+      setGeneratedQrDownload(qrAssets.pngDataUrl)
     } catch (generateError) {
       setError(generateError.message || 'No se pudo generar tu QR de intercambio.')
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleCopyGeneratedQrText = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedText)
+      setExchangeMessage('Texto del QR copiado.')
+    } catch {
+      setError('No se pudo copiar el texto del QR.')
+    }
+  }
+
+  const handleDownloadGeneratedQr = () => {
+    if (!generatedQrDownload) {
+      return
+    }
+
+    const link = document.createElement('a')
+    link.href = generatedQrDownload
+    link.download = 'mi-qr-intercambio-2026.png'
+    document.body.append(link)
+    link.click()
+    link.remove()
   }
 
   const toggleSetCode = (setter, code) => {
@@ -577,8 +611,13 @@ export default function CameraAddPage({
                 </div>
               </header>
               <img src={generatedQrImage} alt="QR de intercambio generado" className="exchange-qr-image" />
+              <div className="camera-actions exchange-generated-actions">
+                <button type="button" className="secondary-button" onClick={handleCopyGeneratedQrText}>Copiar texto del QR</button>
+                <button type="button" className="secondary-button" onClick={handleDownloadGeneratedQr}>Descargar QR</button>
+              </div>
               <textarea readOnly value={generatedText} aria-label="Texto completo del QR generado" />
-              <p className="camera-empty">El QR usa faltantes y repetidas actuales. Las repetidas se guardan como sí/no, sin cantidades.</p>
+              <p className="camera-empty">Para que otra persona lo escanee mejor, sube el brillo de la pantalla y muestra el QR completo sin recortarlo.</p>
+              <p className="camera-empty">El QR usa el prefijo ⋋~ y guarda faltantes/repetidas como sí/no para compatibilidad.</p>
             </section>
           ) : null}
 

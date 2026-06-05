@@ -162,7 +162,7 @@ async function decodeWithJsQr(canvas) {
   return result?.data || ''
 }
 
-async function decodeCanvas(canvas) {
+export async function readQrFromCanvas(canvas) {
   const nativeText = await decodeWithNativeDetector(canvas)
 
   if (nativeText) {
@@ -197,7 +197,7 @@ export async function readQrFromImageFile(file) {
   const variants = buildImageVariants(image, image.naturalWidth || image.width, image.naturalHeight || image.height)
 
   for (const canvas of variants) {
-    const text = await decodeCanvas(canvas)
+    const text = await readQrFromCanvas(canvas)
 
     if (text) {
       return text
@@ -213,13 +213,75 @@ export async function readQrFromVideo(video) {
   }
 
   const canvas = drawSourceToCanvas(video, video.videoWidth, video.videoHeight)
-  return decodeCanvas(canvas)
+  return readQrFromCanvas(canvas)
+}
+
+function buildQrSvgDataUrl(qr, quietModules) {
+  const moduleCount = qr.getModuleCount()
+  const size = moduleCount + quietModules * 2
+  const rects = []
+
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let col = 0; col < moduleCount; col += 1) {
+      if (qr.isDark(row, col)) {
+        rects.push(`<rect x="${col + quietModules}" y="${row + quietModules}" width="1" height="1"/>`)
+      }
+    }
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><g fill="#000">${rects.join('')}</g></svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+function drawQrPngCanvas(qr, quietModules, targetSize) {
+  const moduleCount = qr.getModuleCount()
+  const totalModules = moduleCount + quietModules * 2
+  const moduleSize = Math.max(1, Math.floor(targetSize / totalModules))
+  const canvasSize = moduleSize * totalModules
+  const canvas = createCanvas(canvasSize, canvasSize)
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+
+  context.imageSmoothingEnabled = false
+  context.fillStyle = '#fff'
+  context.fillRect(0, 0, canvasSize, canvasSize)
+  context.fillStyle = '#000'
+
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let col = 0; col < moduleCount; col += 1) {
+      if (qr.isDark(row, col)) {
+        context.fillRect(
+          (col + quietModules) * moduleSize,
+          (row + quietModules) * moduleSize,
+          moduleSize,
+          moduleSize,
+        )
+      }
+    }
+  }
+
+  return canvas
+}
+
+export async function generateQrImageAssets(text, options = {}) {
+  const qrcode = await loadQrGenerator()
+  const qr = qrcode(0, options.errorCorrectionLevel || 'M')
+  const quietModules = options.quietModules ?? 8
+  const pngSize = options.pngSize ?? 1200
+
+  qr.addData(text)
+  qr.make()
+
+  const pngCanvas = drawQrPngCanvas(qr, quietModules, pngSize)
+
+  return {
+    svgDataUrl: buildQrSvgDataUrl(qr, quietModules),
+    pngDataUrl: pngCanvas.toDataURL('image/png'),
+    validationCanvas: pngCanvas,
+    moduleCount: qr.getModuleCount(),
+  }
 }
 
 export async function generateQrDataUrl(text) {
-  const qrcode = await loadQrGenerator()
-  const qr = qrcode(0, 'H')
-  qr.addData(text)
-  qr.make()
-  return qr.createDataURL(8, 16)
+  const assets = await generateQrImageAssets(text)
+  return assets.svgDataUrl
 }

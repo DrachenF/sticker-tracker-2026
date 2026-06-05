@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { generateQrImageAssets, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, preloadQrTools, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 
 function SettingsPage({
   collection,
@@ -32,7 +32,10 @@ function SettingsPage({
     setIsBackupQrScanning(false)
   }
 
-  useEffect(() => () => stopBackupQrCamera(), [])
+  useEffect(() => {
+    preloadQrTools()
+    return () => stopBackupQrCamera()
+  }, [])
 
   const handleGenerateBackupQr = async () => {
     setBackupQrError('')

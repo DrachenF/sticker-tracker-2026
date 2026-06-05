@@ -75,6 +75,14 @@ async function loadQrGenerator() {
   throw lastError || new Error('No se pudo cargar el generador QR.')
 }
 
+
+export function preloadQrTools() {
+  return Promise.allSettled([
+    loadJsQr(),
+    loadQrGenerator(),
+  ])
+}
+
 function createCanvas(width, height) {
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(width))

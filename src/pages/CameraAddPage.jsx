@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import StickerCard from '../components/StickerCard'
 import { buildSections } from '../utils/collectionStats'
 import { getAccentColorForTeam } from '../utils/teamAccents'
-import { generateQrImageAssets, readQrFromCanvas, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, preloadQrTools, readQrFromCanvas, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 import {
   FIGURITAS_PREFIX,
   QR_EXCHANGE_ERROR,
@@ -261,6 +261,23 @@ function ReviewExchange({
           selectionTone="give"
           onToggle={onToggleGive}
         />
+        <ReviewSelectedCards
+          title={isManual ? 'Yo puedo dar' : 'Entregas'}
+          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
+          codes={giveCodes}
+          selectedCodes={selectedGive}
+          stickersByCanonicalCode={stickersByCanonicalCode}
+          collection={collection}
+          context="duplicates"
+          selectionTone="give"
+          onToggle={onToggleGive}
+        />
+      </div>
+      <div className="camera-actions">
+        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
+        {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
+        {!isManual ? <button type="button" className="secondary-button" onClick={onMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button> : null}
+        <button type="button" className="secondary-button" onClick={onUndo} disabled={!canUndo}>Deshacer último intercambio</button>
       </div>
       <div className="camera-actions">
         <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
@@ -366,7 +383,10 @@ export default function CameraAddPage({
     setIsScanning(false)
   }
 
-  useEffect(() => () => stopCamera(), [])
+  useEffect(() => {
+    preloadQrTools()
+    return () => stopCamera()
+  }, [])
 
   const handleModeChange = (nextMode) => {
     stopCamera()
@@ -481,16 +501,22 @@ export default function CameraAddPage({
         quietModules: 8,
         pngSize: 1200,
       })
-      const validationText = await readQrFromCanvas(qrAssets.validationCanvas)
-
-      if (validationText !== text) {
-        console.warn('No se pudo validar el QR generado.')
-      }
-
       setQrDebugInfo(decodedGenerated.debug || null)
       setGeneratedText(text)
       setGeneratedQrImage(qrAssets.svgDataUrl)
       setGeneratedQrDownload(qrAssets.pngDataUrl)
+
+      window.setTimeout(async () => {
+        try {
+          const validationText = await readQrFromCanvas(qrAssets.validationCanvas)
+
+          if (validationText !== text) {
+            console.warn('No se pudo validar el QR generado.')
+          }
+        } catch (validationError) {
+          console.warn('No se pudo validar el QR generado.', validationError)
+        }
+      }, 0)
     } catch (generateError) {
       console.error(generateError)
       setGeneratedText('')

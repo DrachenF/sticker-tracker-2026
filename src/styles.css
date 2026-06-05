@@ -3952,3 +3952,552 @@ a {
     padding: 6px 4px;
   }
 }
+
+/* QR exchange section */
+.exchange-page {
+  gap: 14px;
+}
+
+.exchange-primary-actions {
+  grid-template-columns: 1fr;
+}
+
+.exchange-camera-view {
+  display: none;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.exchange-camera-view.is-active {
+  display: grid;
+}
+
+.exchange-camera-view video {
+  width: 100%;
+  min-height: 260px;
+  border: 1px solid #dbe5f4;
+  border-radius: 16px;
+  background: #0f172a;
+  object-fit: cover;
+}
+
+.exchange-success {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(22, 163, 74, 0.28);
+  border-radius: 14px;
+  background: rgba(22, 163, 74, 0.08);
+  color: #15803d;
+  font-weight: 800;
+}
+
+.exchange-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.exchange-summary-grid span {
+  border: 1px solid #edf2fa;
+  border-radius: 12px;
+  padding: 9px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.86rem;
+}
+
+.exchange-columns {
+  display: grid;
+  gap: 12px;
+}
+
+.exchange-columns.is-exchange-applied .exchange-selectable-card.is-selected {
+  animation: exchangeCardMove 0.42s ease both;
+}
+
+.exchange-column {
+  border: 1px solid #dbe5f4;
+  border-radius: 18px;
+  padding: 12px;
+  background: #fff;
+}
+
+.exchange-column-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.exchange-column-header h2,
+.exchange-confirm-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.exchange-selection-count {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.exchange-sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 108px));
+  justify-content: center;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.exchange-selectable-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: 18px;
+}
+
+.exchange-selectable-card.is-selected {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.07);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.exchange-selected-badge {
+  width: 100%;
+  border-radius: 999px;
+  padding: 4px 5px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.exchange-selectable-card.is-selected .exchange-selected-badge {
+  background: #2563eb;
+  color: #fff;
+}
+
+.exchange-selectable-card.is-receive-selection.is-selected {
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.08);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+}
+
+.exchange-selectable-card.is-receive-selection.is-selected .exchange-selected-badge {
+  background: #16a34a;
+  color: #fff;
+}
+
+.exchange-selectable-card.is-give-selection.is-selected {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.07);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.13);
+}
+
+.exchange-selectable-card.is-give-selection.is-selected .exchange-selected-badge {
+  background: #dc2626;
+  color: #fff;
+}
+
+.exchange-unknown-sticker {
+  min-height: 84px;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 800;
+}
+
+.exchange-unknown-sticker.is-selected {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+}
+
+.exchange-confirm-card p {
+  margin: 8px 0 0;
+}
+
+.exchange-review-columns {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.exchange-review-column {
+  border: 1px solid #edf2fa;
+  border-radius: 16px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.exchange-review-column h3 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.exchange-review-grid {
+  margin-top: 10px;
+}
+
+.exchange-code-list {
+  margin-top: 10px;
+  border: 1px solid #edf2fa;
+  border-radius: 12px;
+  padding: 9px;
+  background: #f8fafc;
+}
+
+.exchange-code-list p {
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.exchange-generated-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.exchange-qr-image {
+  width: min(320px, 100%);
+  border: 10px solid #fff;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.exchange-generated-card textarea {
+  width: 100%;
+  min-height: 78px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 9px;
+  font-size: 0.78rem;
+  color: #334155;
+}
+
+.secondary-button {
+  background: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+@keyframes exchangeCardMove {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  55% { transform: translateY(-10px) scale(1.04); opacity: 0.9; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@media (min-width: 641px) {
+  .exchange-primary-actions,
+  .exchange-columns,
+  .exchange-review-columns {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .exchange-primary-actions {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .exchange-sticker-grid {
+    grid-template-columns: repeat(3, minmax(0, 108px));
+  }
+}
+
+@media (max-width: 430px) {
+  .bottom-nav {
+    gap: 3px;
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .tab-button {
+    min-height: 56px;
+    padding: 5px 1px;
+    border-radius: 14px;
+    gap: 3px;
+  }
+
+  .tab-button span {
+    font-size: 0.6rem;
+    line-height: 1.05;
+  }
+
+  .tab-icon-shell {
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
+  }
+}
+
+@media (min-width: 431px) {
+  .bottom-nav {
+    gap: 5px;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .tab-button {
+    min-height: 60px;
+    padding: 6px 2px;
+  }
+}
+
+.exchange-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 4px;
+  border-radius: 14px;
+  background: #f1f5f9;
+}
+
+.exchange-mode-tabs button {
+  border: 0;
+  border-radius: 11px;
+  padding: 10px 12px;
+  background: transparent;
+  color: #475569;
+  font-weight: 800;
+}
+
+.exchange-mode-tabs button.is-active {
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
+}
+
+.manual-exchange-intro h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.manual-exchange-intro p:not(.camera-kicker) {
+  margin: 8px 0 0;
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.manual-section-stack {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.manual-section-accordion {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.manual-section-accordion summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  cursor: pointer;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.manual-section-accordion summary img {
+  width: 28px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+.manual-section-accordion summary em {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #e2e8f0;
+  color: #475569;
+  font-style: normal;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.manual-code-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 8px 10px;
+}
+
+.manual-code-chip {
+  min-width: 54px;
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #fff;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.manual-code-chip em {
+  border-radius: 999px;
+  padding: 2px 5px;
+  background: #fed7aa;
+  color: #9a3412;
+  font-size: 0.66rem;
+  font-style: normal;
+}
+
+.manual-code-chip.is-missing {
+  border-color: rgba(239, 68, 68, 0.26);
+}
+
+.manual-code-chip.is-duplicate {
+  border-color: rgba(249, 115, 22, 0.28);
+}
+
+.manual-code-chip.is-selected {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.18);
+}
+
+.manual-code-chip.is-selected em {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.exchange-history-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.exchange-history-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.exchange-history-item {
+  border: 1px solid #edf2fa;
+  border-radius: 14px;
+  padding: 9px;
+  background: #f8fafc;
+}
+
+.exchange-history-item strong {
+  color: #1d4ed8;
+  font-size: 0.84rem;
+}
+
+.exchange-history-item p {
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.manual-section-accordion .exchange-sticker-grid {
+  padding: 0 8px 10px;
+}
+
+.manual-exchange-list .sticker-card-grid {
+  width: 100%;
+}
+
+@media (min-width: 641px) {
+  .manual-exchange-columns {
+    align-items: start;
+  }
+}
+
+.settings-backup-qr-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.settings-backup-qr-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.settings-backup-qr-camera {
+  display: none;
+  gap: 8px;
+}
+
+.settings-backup-qr-camera.is-active {
+  display: grid;
+}
+
+.settings-backup-qr-camera video {
+  width: 100%;
+  max-height: 260px;
+  border-radius: 18px;
+  background: #0f172a;
+  object-fit: cover;
+}
+
+.settings-backup-qr-output {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 18px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.settings-backup-qr-output img {
+  width: min(320px, 100%);
+  border: 10px solid #fff;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.settings-qr-error {
+  margin: 0;
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+@media (min-width: 641px) {
+  .settings-backup-qr-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.exchange-generated-actions {
+  width: min(360px, 100%);
+  grid-template-columns: 1fr 1fr;
+}
+
+.exchange-generated-card .exchange-qr-image {
+  width: min(360px, 100%);
+  padding: 0;
+  background: #fff;
+  image-rendering: crisp-edges;
+}

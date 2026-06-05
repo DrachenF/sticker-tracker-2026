@@ -1,4 +1,4 @@
-const QR_PREFIX = '⋋~'
+export const FIGURITAS_PREFIX = '⋋~'
 const BASE_BLOCK_BYTES = 123
 const COCA_COLA_BLOCK_BYTES = 125
 const BASE_REAL_STICKERS = 980
@@ -17,19 +17,19 @@ export const EXCHANGE_COUNTRIES = [
   'POR', 'COD', 'UZB', 'COL', 'ENG', 'CRO', 'GHA', 'PAN',
 ]
 
-function getBit(bytes, index) {
+export function getBit(bytes, index) {
   const byteIndex = Math.floor(index / 8)
   const bitIndex = index % 8
   return (bytes[byteIndex] & (1 << bitIndex)) !== 0
 }
 
-function setBit(bytes, index) {
+export function setBit(bytes, index) {
   const byteIndex = Math.floor(index / 8)
   const bitIndex = index % 8
   bytes[byteIndex] |= 1 << bitIndex
 }
 
-function bytesToBase64(bytes) {
+export function bytesToBase64(bytes) {
   let binary = ''
   const chunkSize = 0x8000
 
@@ -40,7 +40,7 @@ function bytesToBase64(bytes) {
   return btoa(binary)
 }
 
-function base64ToBytes(base64Text) {
+export function base64ToBytes(base64Text) {
   const binary = atob(base64Text)
   return Uint8Array.from(binary, (character) => character.charCodeAt(0))
 }
@@ -61,6 +61,64 @@ async function gunzipBytes(bytes) {
 
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
   return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+
+export async function bytesToGzipBase64(bytes) {
+  return bytesToBase64(await gzipBytes(bytes))
+}
+
+export async function gzipBase64ToBytes(base64Text) {
+  return gunzipBytes(base64ToBytes(base64Text))
+}
+
+export function extractFiguritasPayload(rawText) {
+  if (!rawText || typeof rawText !== 'string') {
+    throw new Error('Texto QR vacío')
+  }
+
+  const start = rawText.indexOf(GZIP_BASE64_MARKER)
+  if (start === -1) {
+    throw new Error('No se encontró H4sI en el QR')
+  }
+
+  const payload = rawText.slice(start).trim()
+  const parts = payload.split(';')
+
+  if (parts.length < 2) {
+    throw new Error('El QR no tiene dos bloques separados por ;')
+  }
+
+  return {
+    missingBlockBase64: parts[0].replace(/\s+/g, ''),
+    duplicatesBlockBase64: parts[1].replace(/\s+/g, ''),
+    partCount: parts.length,
+  }
+}
+
+function assertValidBlockSizes(missingBytes, duplicatesBytes) {
+  if (![BASE_BLOCK_BYTES, COCA_COLA_BLOCK_BYTES].includes(missingBytes.length)) {
+    throw new Error(`Tamaño inválido de bloque faltantes: ${missingBytes.length}`)
+  }
+
+  if (![BASE_BLOCK_BYTES, COCA_COLA_BLOCK_BYTES].includes(duplicatesBytes.length)) {
+    throw new Error(`Tamaño inválido de bloque repetidas: ${duplicatesBytes.length}`)
+  }
+
+  if (missingBytes.length !== duplicatesBytes.length) {
+    throw new Error('Los bloques de faltantes y repetidas no tienen el mismo tamaño')
+  }
+}
+
+function countActiveBits(bytes, realStickerCount) {
+  let count = 0
+
+  for (let index = 0; index < realStickerCount; index += 1) {
+    if (getBit(bytes, index)) {
+      count += 1
+    }
+  }
+
+  return count
 }
 
 export function canonicalIdForIndex(index) {
@@ -158,25 +216,25 @@ function activeIdsFromBytes(bytes) {
   return { ids, unknownIds, realStickerCount, totalBits: bytes.length * 8 }
 }
 
-export async function decodeExchangeText(rawText) {
-  const markerIndex = String(rawText || '').indexOf(GZIP_BASE64_MARKER)
-
-  if (markerIndex === -1) {
-    throw new Error(QR_EXCHANGE_ERROR)
-  }
-
-  const payload = String(rawText).slice(markerIndex).trim()
-  const [missingBlock, duplicatesBlock] = payload.split(';')
-
-  if (!missingBlock || !duplicatesBlock) {
-    throw new Error(QR_EXCHANGE_ERROR)
-  }
-
+export async function decodeFiguritasQrPayload(rawText) {
   try {
-    const missingBytes = await gunzipBytes(base64ToBytes(missingBlock.trim()))
-    const duplicatesBytes = await gunzipBytes(base64ToBytes(duplicatesBlock.trim()))
+    const { missingBlockBase64, duplicatesBlockBase64, partCount } = extractFiguritasPayload(rawText)
+    const missingBytes = await gzipBase64ToBytes(missingBlockBase64)
+    const duplicatesBytes = await gzipBase64ToBytes(duplicatesBlockBase64)
+
+    assertValidBlockSizes(missingBytes, duplicatesBytes)
+
     const missing = activeIdsFromBytes(missingBytes)
     const duplicates = activeIdsFromBytes(duplicatesBytes)
+    const debug = {
+      textStart: String(rawText || '').slice(0, 20),
+      textLength: String(rawText || '').length,
+      partCount,
+      missingBlockBytes: missingBytes.length,
+      duplicatesBlockBytes: duplicatesBytes.length,
+      activeMissingBits: countActiveBits(missingBytes, missing.realStickerCount),
+      activeDuplicateBits: countActiveBits(duplicatesBytes, duplicates.realStickerCount),
+    }
 
     return {
       rawText,
@@ -190,15 +248,17 @@ export async function decodeExchangeText(rawText) {
       totalBits: Math.max(missing.totalBits, duplicates.totalBits),
       realStickerCount: Math.max(missing.realStickerCount, duplicates.realStickerCount),
       hasCocaCola: missing.realStickerCount >= COCA_COLA_REAL_STICKERS || duplicates.realStickerCount >= COCA_COLA_REAL_STICKERS,
+      debug,
     }
   } catch (error) {
-    if (error.message === QR_EXCHANGE_ERROR) {
-      throw error
-    }
-
-    throw new Error(QR_EXCHANGE_ERROR, { cause: error })
+    throw new Error(error.message || QR_EXCHANGE_ERROR, { cause: error })
   }
 }
+
+export async function decodeExchangeText(rawText) {
+  return decodeFiguritasQrPayload(rawText)
+}
+
 
 export function buildMyExchangeSets(stickers, collection) {
   const myMissing = []
@@ -232,31 +292,51 @@ export function compareExchange({ myMissing, myDuplicates, theirMissing, theirDu
   }
 }
 
-export async function encodeExchangeText({ missingIds, duplicateIds }) {
-  const missingBytes = new Uint8Array(BASE_BLOCK_BYTES)
-  const duplicateBytes = new Uint8Array(BASE_BLOCK_BYTES)
+export async function encodeFiguritasQrPayload({ missingIds, duplicateIds, includeCocaCola = false }) {
+  const allIds = [...missingIds, ...duplicateIds]
+  const needsCocaCola = includeCocaCola || allIds.some((code) => {
+    const index = indexForCanonicalId(code)
+    return index !== null && index >= BASE_REAL_STICKERS && index < COCA_COLA_REAL_STICKERS
+  })
+  const blockBytes = needsCocaCola ? COCA_COLA_BLOCK_BYTES : BASE_BLOCK_BYTES
+  const realStickerLimit = needsCocaCola ? COCA_COLA_REAL_STICKERS : BASE_REAL_STICKERS
+  const missingBytes = new Uint8Array(blockBytes)
+  const duplicateBytes = new Uint8Array(blockBytes)
 
   missingIds.forEach((code) => {
     const index = indexForCanonicalId(code)
-    if (index !== null && index < BASE_REAL_STICKERS) {
+    if (index !== null && index < realStickerLimit) {
       setBit(missingBytes, index)
     }
   })
 
   duplicateIds.forEach((code) => {
     const index = indexForCanonicalId(code)
-    if (index !== null && index < BASE_REAL_STICKERS) {
+    if (index !== null && index < realStickerLimit) {
       setBit(duplicateBytes, index)
     }
   })
 
-  const [missingGzip, duplicateGzip] = await Promise.all([
-    gzipBytes(missingBytes),
-    gzipBytes(duplicateBytes),
+  const [base64Faltantes, base64Repetidas] = await Promise.all([
+    bytesToGzipBase64(missingBytes),
+    bytesToGzipBase64(duplicateBytes),
   ])
+  const qrText = `${FIGURITAS_PREFIX}${base64Faltantes};${base64Repetidas}`
 
-  return `${QR_PREFIX}${bytesToBase64(missingGzip)};${bytesToBase64(duplicateGzip)}`
+  return {
+    qrText,
+    missingBytes,
+    duplicateBytes,
+    blockBytes,
+    realStickerLimit,
+  }
 }
+
+export async function encodeExchangeText({ missingIds, duplicateIds, includeCocaCola = false }) {
+  const { qrText } = await encodeFiguritasQrPayload({ missingIds, duplicateIds, includeCocaCola })
+  return qrText
+}
+
 
 export function buildQrImageUrl(text) {
   const params = new URLSearchParams({

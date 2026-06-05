@@ -2,15 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import StickerCard from '../components/StickerCard'
 import { buildSections } from '../utils/collectionStats'
 import { getAccentColorForTeam } from '../utils/teamAccents'
-import { generateQrDataUrl, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, readQrFromCanvas, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 import {
+  FIGURITAS_PREFIX,
   QR_EXCHANGE_ERROR,
   appCodeToCanonicalId,
   buildMyExchangeSets,
   canonicalIdToAppCode,
   compareExchange,
-  decodeExchangeText,
-  encodeExchangeText,
+  decodeFiguritasQrPayload,
+  encodeFiguritasQrPayload,
 } from '../utils/qrExchangeCodec'
 
 const UNEVEN_WARNING = 'La cantidad recibida y entregada no es igual. Confirma si este intercambio es correcto.'
@@ -249,6 +250,23 @@ function ReviewExchange({
           selectionTone="give"
           onToggle={onToggleGive}
         />
+        <ReviewSelectedCards
+          title={isManual ? 'Yo puedo dar' : 'Entregas'}
+          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
+          codes={giveCodes}
+          selectedCodes={selectedGive}
+          stickersByCanonicalCode={stickersByCanonicalCode}
+          collection={collection}
+          context="duplicates"
+          selectionTone="give"
+          onToggle={onToggleGive}
+        />
+      </div>
+      <div className="camera-actions">
+        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
+        {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
+        {!isManual ? <button type="button" className="secondary-button" onClick={onMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button> : null}
+        <button type="button" className="secondary-button" onClick={onUndo} disabled={!canUndo}>Deshacer último intercambio</button>
       </div>
       <div className="camera-actions">
         <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
@@ -289,8 +307,10 @@ export default function CameraAddPage({
   const [settledQrGive, setSettledQrGive] = useState(new Set())
   const [generatedText, setGeneratedText] = useState('')
   const [generatedQrImage, setGeneratedQrImage] = useState('')
+  const [generatedQrDownload, setGeneratedQrDownload] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [exchangeMessage, setExchangeMessage] = useState('')
+  const [qrDebugInfo, setQrDebugInfo] = useState(null)
   const [lastApplied, setLastApplied] = useState(null)
 
   const stickersByCanonicalCode = useMemo(() => {
@@ -366,7 +386,8 @@ export default function CameraAddPage({
     setExchangeMessage('')
 
     try {
-      const decoded = await decodeExchangeText(rawText)
+      const decoded = await decodeFiguritasQrPayload(rawText)
+      setQrDebugInfo(decoded.debug || null)
       setDecodedExchange(decoded)
       setSelectedReceive(new Set())
       setSelectedGive(new Set())
@@ -374,7 +395,9 @@ export default function CameraAddPage({
       setSettledQrGive(new Set())
       stopCamera()
     } catch (decodeError) {
-      setError(decodeError.message === QR_EXCHANGE_ERROR ? 'El QR fue leído, pero no parece compatible con Figuritas App.' : decodeError.message || 'El QR parece compatible, pero no se pudo interpretar el contenido.')
+      console.error(decodeError)
+      setQrDebugInfo(null)
+      setError(decodeError.message === QR_EXCHANGE_ERROR ? 'El QR fue leído, pero no parece compatible con Figuritas App.' : decodeError.message || 'El QR fue leído, pero no se pudo interpretar el contenido.')
     } finally {
       setIsReading(false)
     }
@@ -441,18 +464,64 @@ export default function CameraAddPage({
     setError('')
 
     try {
-      const text = await encodeExchangeText({
+      const generated = await encodeFiguritasQrPayload({
         missingIds: mySets.myMissing,
         duplicateIds: mySets.myDuplicates,
       })
-      const qrImage = await generateQrDataUrl(text)
+      const text = generated.qrText
+      console.log(text.slice(0, 10))
+      console.log(FIGURITAS_PREFIX.codePointAt(0).toString(16))
+      const decodedGenerated = await decodeFiguritasQrPayload(text)
+
+      if (!text.startsWith(`${FIGURITAS_PREFIX}H4sIA`)) {
+        throw new Error('No se pudo validar el prefijo del QR generado.')
+      }
+      const qrAssets = await generateQrImageAssets(text, {
+        errorCorrectionLevel: 'M',
+        quietModules: 8,
+        pngSize: 1200,
+      })
+      const validationText = await readQrFromCanvas(qrAssets.validationCanvas)
+
+      if (validationText !== text) {
+        console.warn('No se pudo validar el QR generado.')
+      }
+
+      setQrDebugInfo(decodedGenerated.debug || null)
       setGeneratedText(text)
-      setGeneratedQrImage(qrImage)
+      setGeneratedQrImage(qrAssets.svgDataUrl)
+      setGeneratedQrDownload(qrAssets.pngDataUrl)
     } catch (generateError) {
-      setError(generateError.message || 'No se pudo generar tu QR de intercambio.')
+      console.error(generateError)
+      setGeneratedText('')
+      setGeneratedQrImage('')
+      setGeneratedQrDownload('')
+      setError(generateError.message || 'No se pudo validar el QR generado.')
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleCopyGeneratedQrText = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedText)
+      setExchangeMessage('Texto del QR copiado.')
+    } catch {
+      setError('No se pudo copiar el texto del QR.')
+    }
+  }
+
+  const handleDownloadGeneratedQr = () => {
+    if (!generatedQrDownload) {
+      return
+    }
+
+    const link = document.createElement('a')
+    link.href = generatedQrDownload
+    link.download = 'mi-qr-intercambio-2026.png'
+    document.body.append(link)
+    link.click()
+    link.remove()
   }
 
   const toggleSetCode = (setter, code) => {
@@ -577,8 +646,28 @@ export default function CameraAddPage({
                 </div>
               </header>
               <img src={generatedQrImage} alt="QR de intercambio generado" className="exchange-qr-image" />
+              <div className="camera-actions exchange-generated-actions">
+                <button type="button" className="secondary-button" onClick={handleCopyGeneratedQrText}>Copiar texto del QR</button>
+                <button type="button" className="secondary-button" onClick={handleDownloadGeneratedQr}>Descargar QR</button>
+              </div>
               <textarea readOnly value={generatedText} aria-label="Texto completo del QR generado" />
-              <p className="camera-empty">El QR usa faltantes y repetidas actuales. Las repetidas se guardan como sí/no, sin cantidades.</p>
+              <p className="camera-empty">Para que otra persona lo escanee mejor, sube el brillo de la pantalla y muestra el QR completo sin recortarlo.</p>
+              <p className="camera-empty">El QR usa el prefijo ⋋~ y guarda faltantes/repetidas como sí/no para compatibilidad.</p>
+            </section>
+          ) : null}
+
+          {qrDebugInfo ? (
+            <section className="camera-result-block exchange-debug-card">
+              <p className="camera-kicker">Depuración QR</p>
+              <div className="exchange-summary-grid">
+                <span>Inicio: <strong>{qrDebugInfo.textStart}</strong></span>
+                <span>Longitud: <strong>{qrDebugInfo.textLength}</strong></span>
+                <span>Partes: <strong>{qrDebugInfo.partCount}</strong></span>
+                <span>Faltantes bytes: <strong>{qrDebugInfo.missingBlockBytes}</strong></span>
+                <span>Repetidas bytes: <strong>{qrDebugInfo.duplicatesBlockBytes}</strong></span>
+                <span>Bits faltantes: <strong>{qrDebugInfo.activeMissingBits}</strong></span>
+                <span>Bits repetidas: <strong>{qrDebugInfo.activeDuplicateBits}</strong></span>
+              </div>
             </section>
           ) : null}
 

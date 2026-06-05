@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { generateQrDataUrl, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 
 function SettingsPage({
   collection,
@@ -39,7 +39,7 @@ function SettingsPage({
 
     try {
       const text = onGenerateBackupText()
-      const image = await generateQrDataUrl(text)
+      const { svgDataUrl: image } = await generateQrImageAssets(text, { errorCorrectionLevel: 'M', quietModules: 8, pngSize: 1200 })
       setBackupQrText(text)
       setBackupQrImage(image)
     } catch {

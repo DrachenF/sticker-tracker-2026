@@ -4489,3 +4489,15 @@ a {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+.exchange-generated-actions {
+  width: min(360px, 100%);
+  grid-template-columns: 1fr 1fr;
+}
+
+.exchange-generated-card .exchange-qr-image {
+  width: min(360px, 100%);
+  padding: 0;
+  background: #fff;
+  image-rendering: crisp-edges;
+}

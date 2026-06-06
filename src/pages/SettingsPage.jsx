@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { generateQrImageAssets, schedulePreloadQrTools, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, schedulePreloadQrTools, readQrFromCanvas, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 
 function SettingsPage({
   collection,
@@ -42,10 +42,29 @@ function SettingsPage({
 
     try {
       const text = onGenerateBackupText()
-      const { svgDataUrl: image } = await generateQrImageAssets(text, { errorCorrectionLevel: 'M', quietModules: 8, includePng: false })
+      const { svgDataUrl: image, validationCanvas } = await generateQrImageAssets(text, {
+        errorCorrectionLevel: 'M',
+        quietModules: 8,
+        pngSize: 1200,
+      })
+      const scannedText = await readQrFromCanvas(validationCanvas)
+
+      if (scannedText !== text) {
+        throw new Error('No se pudo validar visualmente el QR de respaldo generado.')
+      }
+
+      console.log('Validación QR de respaldo completa:', {
+        qrStart: text.slice(0, 24),
+        qrLength: text.length,
+        copiedTextMatchesVisualScan: true,
+      })
+
       setBackupQrText(text)
       setBackupQrImage(image)
-    } catch {
+    } catch (error) {
+      console.error('Error leyendo QR:', error)
+      setBackupQrText('')
+      setBackupQrImage('')
       setBackupQrError('No se pudo generar el QR de respaldo en este navegador.')
     }
   }
@@ -58,6 +77,7 @@ function SettingsPage({
       await onImportBackupText(rawText)
       stopBackupQrCamera()
     } catch (error) {
+      console.error('Error leyendo QR:', error)
       setBackupQrError(error.message || 'No se pudo leer este QR de respaldo.')
     } finally {
       setIsBackupQrReading(false)
@@ -89,14 +109,15 @@ function SettingsPage({
             await applyBackupQrText(value)
             return
           }
-        } catch {
+        } catch (error) {
+          console.error('Error leyendo QR:', error)
           // Keep scanning; individual frames can fail without affecting the flow.
         }
 
-        backupQrLoopRef.current = window.setTimeout(scan, 420)
+        backupQrLoopRef.current = window.setTimeout(scan, 120)
       }
 
-      backupQrLoopRef.current = window.setTimeout(scan, 180)
+      backupQrLoopRef.current = window.setTimeout(scan, 120)
     } catch {
       setBackupQrError('No se pudo acceder a la cámara. Puedes subir una imagen del QR.')
     }
@@ -113,6 +134,7 @@ function SettingsPage({
       const value = await readQrFromImageFile(file)
       await applyBackupQrText(value)
     } catch (error) {
+      console.error('Error leyendo QR:', error)
       setBackupQrError(error.message || 'No se pudo detectar un QR en esta imagen.')
     } finally {
       setIsBackupQrReading(false)

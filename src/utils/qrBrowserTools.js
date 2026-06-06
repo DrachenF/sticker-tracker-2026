@@ -165,6 +165,21 @@ function cropCenter(sourceCanvas, ratio = 0.78) {
   return canvas
 }
 
+
+function buildFastVideoVariants(source, width, height) {
+  const maxSide = Math.max(width, height)
+  const baseScale = maxSide > 720 ? 720 / maxSide : 1
+  const baseWidth = width * baseScale
+  const baseHeight = height * baseScale
+  const base = drawSourceToCanvas(source, baseWidth, baseHeight)
+
+  return [
+    base,
+    transformCanvas(base, (gray) => Math.max(0, Math.min(255, (gray - 128) * 1.8 + 128))),
+    transformCanvas(base, (gray) => (gray > 130 ? 255 : 0)),
+  ]
+}
+
 function buildImageVariants(source, width, height) {
   const maxSide = Math.max(width, height)
   const baseScale = maxSide > 1200 ? 1200 / maxSide : 1
@@ -232,7 +247,7 @@ async function decodeWithZxing(canvas) {
   }
 }
 
-export async function readQrFromCanvas(canvas) {
+export async function readQrFromCanvas(canvas, options = {}) {
   try {
     const nativeText = await decodeWithNativeDetector(canvas)
 
@@ -253,7 +268,7 @@ export async function readQrFromCanvas(canvas) {
     // Continue with ZXing fallback.
   }
 
-  return decodeWithZxing(canvas)
+  return options.useZxing === false ? '' : decodeWithZxing(canvas)
 }
 
 function loadImageFromFile(file) {
@@ -300,17 +315,17 @@ export async function readQrFromVideo(video) {
     return ''
   }
 
-  const variants = buildImageVariants(video, video.videoWidth, video.videoHeight)
+  const variants = buildFastVideoVariants(video, video.videoWidth, video.videoHeight)
 
   for (const canvas of variants) {
     try {
-      const text = await readQrFromCanvas(canvas)
+      const text = await readQrFromCanvas(canvas, { useZxing: false })
 
       if (text) {
         return text
       }
     } catch {
-      // Try the next frame variant.
+      // Try the next lightweight frame variant.
     }
   }
 

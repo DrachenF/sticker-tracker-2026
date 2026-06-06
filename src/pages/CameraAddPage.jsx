@@ -290,51 +290,6 @@ function ReviewExchange({
           selectionTone="give"
           onToggle={onToggleGive}
         />
-        <ReviewSelectedCards
-          title={isManual ? 'Yo puedo dar' : 'Entregas'}
-          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
-          codes={giveCodes}
-          selectedCodes={selectedGive}
-          stickersByCanonicalCode={stickersByCanonicalCode}
-          collection={collection}
-          context="duplicates"
-          selectionTone="give"
-          onToggle={onToggleGive}
-        />
-        <ReviewSelectedCards
-          title={isManual ? 'Yo puedo dar' : 'Entregas'}
-          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
-          codes={giveCodes}
-          selectedCodes={selectedGive}
-          stickersByCanonicalCode={stickersByCanonicalCode}
-          collection={collection}
-          context="duplicates"
-          selectionTone="give"
-          onToggle={onToggleGive}
-        />
-        <ReviewSelectedCards
-          title={isManual ? 'Yo puedo dar' : 'Entregas'}
-          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
-          codes={giveCodes}
-          selectedCodes={selectedGive}
-          stickersByCanonicalCode={stickersByCanonicalCode}
-          collection={collection}
-          context="duplicates"
-          selectionTone="give"
-          onToggle={onToggleGive}
-        />
-      </div>
-      <div className="camera-actions">
-        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
-        {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
-        {!isManual ? <button type="button" className="secondary-button" onClick={onMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button> : null}
-        <button type="button" className="secondary-button" onClick={onUndo} disabled={!canUndo}>Deshacer último intercambio</button>
-      </div>
-      <div className="camera-actions">
-        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
-        {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
-        {!isManual ? <button type="button" className="secondary-button" onClick={onMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button> : null}
-        <button type="button" className="secondary-button" onClick={onUndo} disabled={!canUndo}>Deshacer último intercambio</button>
       </div>
       <div className="camera-actions">
         <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
@@ -510,7 +465,7 @@ export default function CameraAddPage({
           // Keep scanning; some frames may not be readable.
         }
 
-        scanLoopRef.current = window.setTimeout(scan, 420)
+        scanLoopRef.current = window.setTimeout(scan, 120)
       }
 
       scanLoopRef.current = window.setTimeout(scan, 180)

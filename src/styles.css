@@ -3942,6 +3942,12 @@ a {
   background: var(--orange);
 }
 
+.exchange-qr-filter-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 430px;
+  width: 100%;
+}
+
 @media (max-width: 460px) {
   .duplicate-filter-group {
     gap: 4px;

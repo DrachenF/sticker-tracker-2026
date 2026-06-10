@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import StickerCard from '../components/StickerCard'
 import { buildSections } from '../utils/collectionStats'
 import { getAccentColorForTeam } from '../utils/teamAccents'
-import { generateQrImageAssets, schedulePreloadQrTools, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
+import { generateQrImageAssets, schedulePreloadQrTools, readQrFromCanvas, readQrFromImageFile, readQrFromVideo } from '../utils/qrBrowserTools'
 import {
   FIGURITAS_PREFIX,
   QR_EXCHANGE_ERROR,
@@ -15,6 +15,46 @@ import {
 } from '../utils/qrExchangeCodec'
 
 const UNEVEN_WARNING = 'La cantidad recibida y entregada no es igual. Confirma si este intercambio es correcto.'
+const QR_INTERPRET_ERROR_MESSAGE = 'El QR fue leído, pero no se pudo interpretar el contenido.'
+
+function sameCodes(first, second) {
+  if (first.length !== second.length) {
+    return false
+  }
+
+  const firstSorted = [...first].sort()
+  const secondSorted = [...second].sort()
+  return firstSorted.every((code, index) => code === secondSorted[index])
+}
+
+class ExchangeResultErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error) {
+    console.error('Error leyendo QR:', error)
+  }
+
+  componentDidUpdate(previousProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false })
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <p className="settings-qr-error">{QR_INTERPRET_ERROR_MESSAGE}</p>
+    }
+
+    return this.props.children
+  }
+}
 
 function getStickerMeta(sticker) {
   return sticker?.teamCode || sticker?.section || 'base'
@@ -250,51 +290,6 @@ function ReviewExchange({
           selectionTone="give"
           onToggle={onToggleGive}
         />
-        <ReviewSelectedCards
-          title={isManual ? 'Yo puedo dar' : 'Entregas'}
-          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
-          codes={giveCodes}
-          selectedCodes={selectedGive}
-          stickersByCanonicalCode={stickersByCanonicalCode}
-          collection={collection}
-          context="duplicates"
-          selectionTone="give"
-          onToggle={onToggleGive}
-        />
-        <ReviewSelectedCards
-          title={isManual ? 'Yo puedo dar' : 'Entregas'}
-          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
-          codes={giveCodes}
-          selectedCodes={selectedGive}
-          stickersByCanonicalCode={stickersByCanonicalCode}
-          collection={collection}
-          context="duplicates"
-          selectionTone="give"
-          onToggle={onToggleGive}
-        />
-        <ReviewSelectedCards
-          title={isManual ? 'Yo puedo dar' : 'Entregas'}
-          helper={isManual ? 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para seleccionarla o desmarcarla.' : 'Estas repetidas bajarán en 1 al confirmar. Toca una carta para desmarcarla.'}
-          codes={giveCodes}
-          selectedCodes={selectedGive}
-          stickersByCanonicalCode={stickersByCanonicalCode}
-          collection={collection}
-          context="duplicates"
-          selectionTone="give"
-          onToggle={onToggleGive}
-        />
-      </div>
-      <div className="camera-actions">
-        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
-        {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
-        {!isManual ? <button type="button" className="secondary-button" onClick={onMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button> : null}
-        <button type="button" className="secondary-button" onClick={onUndo} disabled={!canUndo}>Deshacer último intercambio</button>
-      </div>
-      <div className="camera-actions">
-        <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
-        {isManual ? <button type="button" className="secondary-button" onClick={onBackToManual}>Volver a seleccionar</button> : null}
-        {!isManual ? <button type="button" className="secondary-button" onClick={onMarkElsewhere} disabled={!selectedReceive.size}>Obtenidas por otro método</button> : null}
-        <button type="button" className="secondary-button" onClick={onUndo} disabled={!canUndo}>Deshacer último intercambio</button>
       </div>
       <div className="camera-actions">
         <button type="button" onClick={onConfirm} disabled={!hasSelection}>{confirmLabel}</button>
@@ -340,6 +335,7 @@ export default function CameraAddPage({
   const [exchangeMessage, setExchangeMessage] = useState('')
   const [qrDebugInfo, setQrDebugInfo] = useState(null)
   const [lastApplied, setLastApplied] = useState(null)
+  const [exchangeDuplicateMin, setExchangeDuplicateMin] = useState(1)
 
   const stickersByCanonicalCode = useMemo(() => {
     return stickers.reduce((acc, sticker) => {
@@ -348,24 +344,32 @@ export default function CameraAddPage({
     }, {})
   }, [stickers])
 
-  const mySets = useMemo(() => buildMyExchangeSets(stickers, collection), [stickers, collection])
+  const mySets = useMemo(
+    () => buildMyExchangeSets(stickers, collection, { minDuplicateCopies: exchangeDuplicateMin }),
+    [stickers, collection, exchangeDuplicateMin],
+  )
 
   const comparedExchange = useMemo(() => {
     if (!decodedExchange) {
       return null
     }
 
-    const comparison = compareExchange({
-      ...mySets,
-      theirMissing: decodedExchange.theirMissing,
-      theirDuplicates: decodedExchange.theirDuplicates,
-    })
+    try {
+      const comparison = compareExchange({
+        ...mySets,
+        theirMissing: decodedExchange.theirMissing,
+        theirDuplicates: decodedExchange.theirDuplicates,
+      })
 
-    return {
-      ...decodedExchange,
-      ...comparison,
-      theyCanGiveMe: comparison.theyCanGiveMe.filter((code) => !settledQrReceive.has(code)),
-      iCanGiveThem: comparison.iCanGiveThem.filter((code) => !settledQrGive.has(code)),
+      return {
+        ...decodedExchange,
+        ...comparison,
+        theyCanGiveMe: comparison.theyCanGiveMe.filter((code) => !settledQrReceive.has(code)),
+        iCanGiveThem: comparison.iCanGiveThem.filter((code) => !settledQrGive.has(code)),
+      }
+    } catch (error) {
+      console.error('Error leyendo QR:', error)
+      return null
     }
   }, [decodedExchange, mySets, settledQrReceive, settledQrGive])
 
@@ -411,6 +415,15 @@ export default function CameraAddPage({
     setSettledQrGive(new Set())
   }
 
+  const handleExchangeDuplicateFilterChange = (minDuplicateCopies) => {
+    setExchangeDuplicateMin(minDuplicateCopies)
+    setGeneratedText('')
+    setGeneratedQrImage('')
+    setGeneratedQrDownload('')
+    setQrDebugInfo(null)
+    setSelectedGive(new Set())
+  }
+
   const applyDecodedText = async (rawText) => {
     setIsReading(true)
     setError('')
@@ -426,9 +439,10 @@ export default function CameraAddPage({
       setSettledQrGive(new Set())
       stopCamera()
     } catch (decodeError) {
-      console.error(decodeError)
+      console.error('Error leyendo QR:', decodeError)
       setQrDebugInfo(null)
-      setError(decodeError.message === QR_EXCHANGE_ERROR ? 'El QR fue leído, pero no parece compatible con Figuritas App.' : decodeError.message || 'El QR fue leído, pero no se pudo interpretar el contenido.')
+      setDecodedExchange(null)
+      setError(decodeError.message === QR_EXCHANGE_ERROR ? 'El QR fue leído, pero no parece compatible con Figuritas App.' : QR_INTERPRET_ERROR_MESSAGE)
     } finally {
       setIsReading(false)
     }
@@ -459,11 +473,12 @@ export default function CameraAddPage({
             await applyDecodedText(value)
             return
           }
-        } catch {
+        } catch (scanError) {
+          console.error('Error leyendo QR:', scanError)
           // Keep scanning; some frames may not be readable.
         }
 
-        scanLoopRef.current = window.setTimeout(scan, 420)
+        scanLoopRef.current = window.setTimeout(scan, 120)
       }
 
       scanLoopRef.current = window.setTimeout(scan, 180)
@@ -483,6 +498,7 @@ export default function CameraAddPage({
       const value = await readQrFromImageFile(file)
       await applyDecodedText(value)
     } catch (uploadError) {
+      console.error('Error leyendo QR:', uploadError)
       setError(uploadError.message || 'No se pudo detectar un QR en esta imagen.')
     } finally {
       setIsReading(false)
@@ -500,28 +516,47 @@ export default function CameraAddPage({
         duplicateIds: mySets.myDuplicates,
       })
       const text = generated.qrText
-      console.log(text.slice(0, 10))
-      console.log(FIGURITAS_PREFIX.codePointAt(0).toString(16))
       const decodedGenerated = await decodeFiguritasQrPayload(text)
 
       if (!text.startsWith(`${FIGURITAS_PREFIX}H4sIA`)) {
         throw new Error('No se pudo validar el prefijo del QR generado.')
       }
+
+      console.log({
+        qrStart: text.slice(0, 20),
+        qrLength: text.length,
+        decodedMissingCount: decodedGenerated.missing.length,
+        decodedDuplicatesCount: decodedGenerated.duplicates.length,
+      })
+
       const qrAssets = await generateQrImageAssets(text, {
         errorCorrectionLevel: 'M',
         quietModules: 8,
-        includePng: false,
+        pngSize: 1200,
       })
+      const scannedText = await readQrFromCanvas(qrAssets.validationCanvas)
+      const decodedScanned = await decodeFiguritasQrPayload(scannedText)
+
+      if (!sameCodes(decodedGenerated.missing, decodedScanned.missing) || !sameCodes(decodedGenerated.duplicates, decodedScanned.duplicates)) {
+        throw new Error('La lectura visual del QR generado no coincide con el texto del QR.')
+      }
+
+      console.log('Validación QR completa:', {
+        copiedTextMatchesVisualScan: true,
+        missingCount: decodedScanned.missing.length,
+        duplicatesCount: decodedScanned.duplicates.length,
+      })
+
       setQrDebugInfo(decodedGenerated.debug || null)
       setGeneratedText(text)
       setGeneratedQrImage(qrAssets.svgDataUrl)
-      setGeneratedQrDownload('')
+      setGeneratedQrDownload(qrAssets.pngDataUrl)
     } catch (generateError) {
-      console.error(generateError)
+      console.error('Error leyendo QR:', generateError)
       setGeneratedText('')
       setGeneratedQrImage('')
       setGeneratedQrDownload('')
-      setError(generateError.message || 'No se pudo validar el QR generado.')
+      setError('No se pudo validar el QR generado.')
     } finally {
       setIsGenerating(false)
     }
@@ -663,6 +698,11 @@ export default function CameraAddPage({
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isReading}>Subir imagen de QR</button>
               <button type="button" onClick={handleGenerateQr} disabled={isGenerating}>{isGenerating ? 'Generando…' : 'Generar mi QR'}</button>
             </div>
+            <div className="duplicate-filter-group exchange-qr-filter-group" role="group" aria-label="Filtrar repetidas para QR">
+              <button type="button" className={`chip-filter ${exchangeDuplicateMin === 1 ? 'is-active' : ''}`} onClick={() => handleExchangeDuplicateFilterChange(1)}>Todas mis repetidas</button>
+              <button type="button" className={`chip-filter ${exchangeDuplicateMin === 2 ? 'is-active' : ''}`} onClick={() => handleExchangeDuplicateFilterChange(2)}>Solo x2 o más</button>
+            </div>
+            <p className="camera-empty">Este filtro solo afecta las repetidas que ofreces por QR y el QR que generas.</p>
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleImageUpload(event.target.files?.[0])} />
             <div className={`exchange-camera-view ${isScanning ? 'is-active' : ''}`}>
               <video ref={videoRef} playsInline muted aria-label="Vista de cámara para escanear QR" />
@@ -704,7 +744,8 @@ export default function CameraAddPage({
             </section>
           ) : null}
 
-          {comparedExchange ? (
+          <ExchangeResultErrorBoundary resetKey={decodedExchange?.rawText || ''}>
+            {comparedExchange ? (
             <>
               <section className="camera-result-block exchange-summary-card">
                 <p className="camera-kicker">Código leído</p>
@@ -756,7 +797,8 @@ export default function CameraAddPage({
                 onToggleGive={(code) => toggleSetCode(setSelectedGive, code)}
               />
             </>
-          ) : null}
+            ) : null}
+          </ExchangeResultErrorBoundary>
         </>
       ) : (
         <>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import StickerCard from '../components/StickerCard'
 import { buildDuplicateText } from '../utils/exportText'
 import { buildSections } from '../utils/collectionStats'
@@ -24,6 +24,22 @@ function AlbumFlag({ section }) {
   )
 }
 
+function matchesDuplicateFilter(duplicates, filter) {
+  if (filter === 'all') {
+    return duplicates > 0
+  }
+
+  if (filter === '1') {
+    return duplicates === 1
+  }
+
+  if (filter === '4plus') {
+    return duplicates >= 4
+  }
+
+  return duplicates >= Number(filter)
+}
+
 function DuplicatesPage({
   stickers,
   teams,
@@ -32,7 +48,6 @@ function DuplicatesPage({
   onSelectSection,
   onCloseSection,
   onOpenDuplicateInAlbum,
-  onToggleOwned,
   onIncrementDuplicates,
   onDecrementDuplicates,
   onCopyText,
@@ -49,12 +64,10 @@ function DuplicatesPage({
     [stickers, collection]
   )
 
-  const filteredDuplicateStickers = useMemo(() => {
-    if (duplicateFilter === 'all') return duplicateStickers
-    if (duplicateFilter === '4plus') return duplicateStickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) >= 4)
-    const exact = Number(duplicateFilter)
-    return duplicateStickers.filter((sticker) => (collection[sticker.code]?.duplicates ?? 0) === exact)
-  }, [duplicateFilter, duplicateStickers, collection])
+  const filteredDuplicateStickers = useMemo(
+    () => duplicateStickers.filter((sticker) => matchesDuplicateFilter(collection[sticker.code]?.duplicates ?? 0, duplicateFilter)),
+    [duplicateFilter, duplicateStickers, collection],
+  )
 
   const filteredDuplicateCopies = useMemo(
     () => filteredDuplicateStickers.reduce((acc, sticker) => acc + (collection[sticker.code]?.duplicates ?? 0), 0),
@@ -67,8 +80,8 @@ function DuplicatesPage({
   )
 
   const duplicateText = useMemo(
-    () => buildDuplicateText(duplicateStickers, collection),
-    [duplicateStickers, collection]
+    () => buildDuplicateText(filteredDuplicateStickers, collection),
+    [filteredDuplicateStickers, collection]
   )
 
   const allSections = useMemo(

@@ -52,6 +52,29 @@ async function loadJsQr() {
   throw lastError || new Error('No se pudo cargar el lector QR.')
 }
 
+async function loadZxing() {
+  if (window.ZXingBrowser) {
+    return window.ZXingBrowser
+  }
+
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js',
+    'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js',
+  ]
+
+  let lastError
+
+  for (const url of urls) {
+    try {
+      return await loadScriptOnce(url, 'ZXingBrowser')
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error('No se pudo cargar ZXing.')
+}
+
 async function loadQrGenerator() {
   if (window.qrcode) {
     return window.qrcode
@@ -80,6 +103,7 @@ export function preloadQrTools() {
   return Promise.allSettled([
     loadJsQr(),
     loadQrGenerator(),
+    loadZxing(),
   ])
 }
 
@@ -141,6 +165,21 @@ function cropCenter(sourceCanvas, ratio = 0.78) {
   return canvas
 }
 
+
+function buildFastVideoVariants(source, width, height) {
+  const maxSide = Math.max(width, height)
+  const baseScale = maxSide > 720 ? 720 / maxSide : 1
+  const baseWidth = width * baseScale
+  const baseHeight = height * baseScale
+  const base = drawSourceToCanvas(source, baseWidth, baseHeight)
+
+  return [
+    base,
+    transformCanvas(base, (gray) => Math.max(0, Math.min(255, (gray - 128) * 1.8 + 128))),
+    transformCanvas(base, (gray) => (gray > 130 ? 255 : 0)),
+  ]
+}
+
 function buildImageVariants(source, width, height) {
   const maxSide = Math.max(width, height)
   const baseScale = maxSide > 1200 ? 1200 / maxSide : 1
@@ -148,13 +187,16 @@ function buildImageVariants(source, width, height) {
   const baseHeight = height * baseScale
   const base = drawSourceToCanvas(source, baseWidth, baseHeight)
   const double = drawSourceToCanvas(source, baseWidth, baseHeight, 2)
+  const triple = drawSourceToCanvas(source, baseWidth, baseHeight, 3)
   const center = cropCenter(base)
-  const variants = [base, double, center, drawSourceToCanvas(center, center.width, center.height, 2)]
+  const variants = [base, double, triple, center, drawSourceToCanvas(center, center.width, center.height, 2), drawSourceToCanvas(center, center.width, center.height, 3)]
   const transformed = []
 
   variants.forEach((canvas) => {
     transformed.push(canvas)
+    transformed.push(transformCanvas(canvas, (gray) => gray))
     transformed.push(transformCanvas(canvas, (gray) => Math.max(0, Math.min(255, (gray - 128) * 1.7 + 128))))
+    transformed.push(transformCanvas(canvas, (gray) => Math.max(0, Math.min(255, (gray - 128) * 2.3 + 128))))
     transformed.push(transformCanvas(canvas, (gray) => (gray > 145 ? 255 : 0)))
     transformed.push(transformCanvas(canvas, (gray) => (gray > 105 ? 255 : 0)))
   })
@@ -187,18 +229,46 @@ async function decodeWithJsQr(canvas) {
   return result?.data || ''
 }
 
-export async function readQrFromCanvas(canvas) {
-  const nativeText = await decodeWithNativeDetector(canvas)
-
-  if (nativeText) {
-    return nativeText
-  }
-
+async function decodeWithZxing(canvas) {
   try {
-    return await decodeWithJsQr(canvas)
+    const zxing = await loadZxing()
+    const Reader = zxing.BrowserQRCodeReader || zxing.BrowserMultiFormatReader
+    if (!Reader) {
+      return ''
+    }
+
+    const reader = new Reader()
+    const result = typeof reader.decodeFromCanvas === 'function'
+      ? await reader.decodeFromCanvas(canvas)
+      : null
+    return result?.getText?.() || result?.text || ''
   } catch {
     return ''
   }
+}
+
+export async function readQrFromCanvas(canvas, options = {}) {
+  try {
+    const nativeText = await decodeWithNativeDetector(canvas)
+
+    if (nativeText) {
+      return nativeText
+    }
+  } catch {
+    // Continue with JavaScript readers.
+  }
+
+  try {
+    const jsQrText = await decodeWithJsQr(canvas)
+
+    if (jsQrText) {
+      return jsQrText
+    }
+  } catch {
+    // Continue with ZXing fallback.
+  }
+
+  return options.useZxing === false ? '' : decodeWithZxing(canvas)
 }
 
 function loadImageFromFile(file) {
@@ -218,15 +288,23 @@ function loadImageFromFile(file) {
 }
 
 export async function readQrFromImageFile(file) {
-  const image = await loadImageFromFile(file)
-  const variants = buildImageVariants(image, image.naturalWidth || image.width, image.naturalHeight || image.height)
+  try {
+    const image = await loadImageFromFile(file)
+    const variants = buildImageVariants(image, image.naturalWidth || image.width, image.naturalHeight || image.height)
 
-  for (const canvas of variants) {
-    const text = await readQrFromCanvas(canvas)
+    for (const canvas of variants) {
+      try {
+        const text = await readQrFromCanvas(canvas)
 
-    if (text) {
-      return text
+        if (text) {
+          return text
+        }
+      } catch {
+        // Try the next visual variant.
+      }
     }
+  } catch (error) {
+    throw error.message ? error : new Error(QR_DETECT_ERROR)
   }
 
   throw new Error(QR_DETECT_ERROR)
@@ -237,8 +315,21 @@ export async function readQrFromVideo(video) {
     return ''
   }
 
-  const canvas = drawSourceToCanvas(video, video.videoWidth, video.videoHeight)
-  return readQrFromCanvas(canvas)
+  const variants = buildFastVideoVariants(video, video.videoWidth, video.videoHeight)
+
+  for (const canvas of variants) {
+    try {
+      const text = await readQrFromCanvas(canvas, { useZxing: false })
+
+      if (text) {
+        return text
+      }
+    } catch {
+      // Try the next lightweight frame variant.
+    }
+  }
+
+  return ''
 }
 
 function buildQrSvgDataUrl(qr, quietModules) {
@@ -289,6 +380,9 @@ function drawQrPngCanvas(qr, quietModules, targetSize) {
 
 export async function generateQrImageAssets(text, options = {}) {
   const qrcode = await loadQrGenerator()
+  if (qrcode.stringToBytesFuncs?.['UTF-8']) {
+    qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8']
+  }
   const qr = qrcode(0, options.errorCorrectionLevel || 'M')
   const quietModules = options.quietModules ?? 8
   const pngSize = options.pngSize ?? 1200

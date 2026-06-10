@@ -335,6 +335,7 @@ export default function CameraAddPage({
   const [exchangeMessage, setExchangeMessage] = useState('')
   const [qrDebugInfo, setQrDebugInfo] = useState(null)
   const [lastApplied, setLastApplied] = useState(null)
+  const [exchangeDuplicateMin, setExchangeDuplicateMin] = useState(1)
 
   const stickersByCanonicalCode = useMemo(() => {
     return stickers.reduce((acc, sticker) => {
@@ -343,7 +344,10 @@ export default function CameraAddPage({
     }, {})
   }, [stickers])
 
-  const mySets = useMemo(() => buildMyExchangeSets(stickers, collection), [stickers, collection])
+  const mySets = useMemo(
+    () => buildMyExchangeSets(stickers, collection, { minDuplicateCopies: exchangeDuplicateMin }),
+    [stickers, collection, exchangeDuplicateMin],
+  )
 
   const comparedExchange = useMemo(() => {
     if (!decodedExchange) {
@@ -409,6 +413,15 @@ export default function CameraAddPage({
     setManualGiveSelection(new Set())
     setSettledQrReceive(new Set())
     setSettledQrGive(new Set())
+  }
+
+  const handleExchangeDuplicateFilterChange = (minDuplicateCopies) => {
+    setExchangeDuplicateMin(minDuplicateCopies)
+    setGeneratedText('')
+    setGeneratedQrImage('')
+    setGeneratedQrDownload('')
+    setQrDebugInfo(null)
+    setSelectedGive(new Set())
   }
 
   const applyDecodedText = async (rawText) => {
@@ -685,6 +698,11 @@ export default function CameraAddPage({
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isReading}>Subir imagen de QR</button>
               <button type="button" onClick={handleGenerateQr} disabled={isGenerating}>{isGenerating ? 'Generando…' : 'Generar mi QR'}</button>
             </div>
+            <div className="duplicate-filter-group exchange-qr-filter-group" role="group" aria-label="Filtrar repetidas para QR">
+              <button type="button" className={`chip-filter ${exchangeDuplicateMin === 1 ? 'is-active' : ''}`} onClick={() => handleExchangeDuplicateFilterChange(1)}>Todas mis repetidas</button>
+              <button type="button" className={`chip-filter ${exchangeDuplicateMin === 2 ? 'is-active' : ''}`} onClick={() => handleExchangeDuplicateFilterChange(2)}>Solo x2 o más</button>
+            </div>
+            <p className="camera-empty">Este filtro solo afecta las repetidas que ofreces por QR y el QR que generas.</p>
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => handleImageUpload(event.target.files?.[0])} />
             <div className={`exchange-camera-view ${isScanning ? 'is-active' : ''}`}>
               <video ref={videoRef} playsInline muted aria-label="Vista de cámara para escanear QR" />

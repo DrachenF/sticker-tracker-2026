@@ -271,7 +271,8 @@ export async function decodeExchangeText(rawText) {
 }
 
 
-export function buildMyExchangeSets(stickers, collection) {
+export function buildMyExchangeSets(stickers, collection, options = {}) {
+  const minDuplicateCopies = Math.max(1, Number(options.minDuplicateCopies) || 1)
   const myMissing = []
   const myDuplicates = []
 
@@ -283,7 +284,7 @@ export function buildMyExchangeSets(stickers, collection) {
       myMissing.push(canonicalCode)
     }
 
-    if ((state?.duplicates ?? 0) > 0) {
+    if ((state?.duplicates ?? 0) >= minDuplicateCopies) {
       myDuplicates.push(canonicalCode)
     }
   })
